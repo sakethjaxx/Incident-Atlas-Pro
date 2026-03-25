@@ -1,0 +1,50 @@
+agents:
+- name: orchestrator_router
+  model: gemini
+  role: Plan tickets, route work, manage dependencies
+  routing_tags:
+  - plan
+  - route
+- name: research_sot
+  model: gemini
+  role: Research best/current approach with links (Gemini + browsing)
+  routing_tags:
+  - research
+- name: architect
+  model: gemini
+  role: Design schemas, contracts, pipelines
+  routing_tags:
+  - design
+- name: backend_builder
+  model: codex
+  role: Implement backend + workers + DB + tests
+  routing_tags:
+  - backend
+  - worker
+  - db
+- name: frontend_builder
+  model: codex
+  role: Implement Next.js UI + integration + tests
+  routing_tags:
+  - frontend
+  - ui
+- name: qa_security
+  model: codex
+  role: Adversarial review, security, perf, test gaps
+  routing_tags:
+  - review
+  - security
+  - perf
+- name: release_integrator
+  model: gemini
+  role: Merge/release plan, deploy, smoke tests, demo
+  routing_tags:
+  - release
+  - deploy
+routing:
+  research: research_sot
+  design: architect
+  backend: backend_builder
+  frontend: frontend_builder
+  review: qa_security
+  release: release_integrator

@@ -7,6 +7,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
 enum SectionType {
   impact
   timeline
@@ -14,25 +16,107 @@ enum SectionType {
   fix
 }
 
+enum ParseStatus {
+  pending
+  processing
+  done
+  failed
+}
+
+enum JobStatus {
+  queued
+  running
+  success
+  failed
+}
+
+enum SourceType {
+  blog
+  statuspage
+  github
+  pdf
+  manual
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+/// A crawl/upload source (e.g. a status-page domain or GitHub repo)
+model Source {
+  id          String     @id @default(uuid()) @db.Uuid
+  name        String
+  url         String     @unique
+  type        SourceType @default(manual)
+  crawlPolicy Json?      @map("crawl_policy")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  documents   Document[]
+
+  @@map("sources")
+}
+
+/// A raw fetched/uploaded document before ingestion
+model Document {
+  id          String      @id @default(uuid()) @db.Uuid
+  sourceId    String?     @map("source_id") @db.Uuid
+  rawPath     String?     @map("raw_path")
+  rawText     String?     @map("raw_text")
+  hash        String?
+  fetchedAt   DateTime?   @map("fetched_at")
+  parseStatus ParseStatus @default(pending) @map("parse_status")
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  source    Source?     @relation(fields: [sourceId], references: [id])
+  ingestJob IngestJob?
+  incident  Incident?
+
+  @@map("documents")
+}
+
+/// Tracks per-document ingestion job progress
+model IngestJob {
+  id         String    @id @default(uuid()) @db.Uuid
+  documentId String    @unique @map("document_id") @db.Uuid
+  stage      String    @default("queued")
+  status     JobStatus @default(queued)
+  error      String?
+  startedAt  DateTime? @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@map("ingest_jobs")
+}
+
+/// A normalized, structured incident record
 model Incident {
   id          String    @id @default(uuid()) @db.Uuid
+  documentId  String?   @unique @map("document_id") @db.Uuid
   title       String
   date        DateTime?
   company     String?
+  products    String[]  @default([])
+  duration    String?
   severity    String?
   tags        String[]  @default([])
+  sourceUrl   String?   @map("source_url")
   summaryText String?   @map("summary_text")
-  sections    Section[]
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  document Document?  @relation(fields: [documentId], references: [id])
+  sections Section[]
 
   @@map("incidents")
 }
 
+/// A typed section (impact / timeline / rootcause / fix) within an incident
 model Section {
   id         String      @id @default(uuid()) @db.Uuid
   incidentId String      @map("incident_id") @db.Uuid
   type       SectionType
   text       String
-  incident   Incident    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime    @default(now()) @map("created_at")
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@map("sections")
 }

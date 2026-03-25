@@ -1,0 +1,25 @@
+{
+  "project": "Incident Atlas Pro",
+  "version": "v0.1",
+  "tickets": [
+    {
+      "id": "S1-001",
+      "title": "DB schema + migrations (sources/documents/incidents/sections)",
+      "tags": [
+        "design",
+        "backend"
+      ],
+      "owner_agent": "architect",
+      "status": "TODO",
+      "acceptance_criteria": [
+        "Fresh DB migrates cleanly",
+        "CRUD models compile and basic insert works"
+      ],
+      "tests_required": [
+        "migration smoke test",
+        "db connectivity test"
+      ],
+      "artifacts": []
+    }
+  ]
+}

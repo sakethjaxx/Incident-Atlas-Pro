@@ -6,8 +6,43 @@ import "dotenv/config";
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors());
+// SEC-1: Restrict CORS to known dev origins; override via CORS_ORIGIN env var in production.
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
+app.use(
+  cors({
+    origin: ALLOWED_ORIGIN,
+    methods: ["GET", "POST", "OPTIONS"],
+  })
+);
 app.use(express.json({ limit: "2mb" }));
+
+// SEC-2: Simple API-key guard for write endpoints (admin ingestion).
+// Set INGEST_API_KEY in the environment. If unset in dev, the key check is skipped.
+const INGEST_API_KEY = process.env.INGEST_API_KEY || "";
+function requireIngestKey(req, res, next) {
+  if (!INGEST_API_KEY) {
+    // Key not configured → warn once on first request but allow through (dev only).
+    console.warn(
+      "[SECURITY] INGEST_API_KEY is not set. Ingest endpoint is unprotected."
+    );
+    return next();
+  }
+  const provided = req.headers["x-ingest-api-key"];
+  if (provided !== INGEST_API_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  return next();
+}
+
+// Validate that a string is a valid v4 UUID.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isValidUuid(value) {
+  return UUID_RE.test(value);
+}
+
+// Max raw text size (100 KB) to avoid CPU-intensive section parsing on huge inputs.
+const MAX_RAW_TEXT_BYTES = 100 * 1024;
 
 const SECTION_TYPES = ["impact", "timeline", "rootcause", "fix"];
 const LABELS = {
@@ -108,6 +143,11 @@ app.get("/incidents", async (_req, res, next) => {
 
 app.get("/incidents/:id", async (req, res, next) => {
   try {
+    // TST-2: Reject non-UUID ids before hitting the DB to avoid Prisma p2023 errors.
+    if (!isValidUuid(req.params.id)) {
+      res.status(400).json({ error: "Invalid incident id" });
+      return;
+    }
     const incident = await prisma.incident.findUnique({
       where: { id: req.params.id },
       include: { sections: true },
@@ -122,7 +162,7 @@ app.get("/incidents/:id", async (req, res, next) => {
   }
 });
 
-app.post("/ingest/manual", async (req, res, next) => {
+app.post("/ingest/manual", requireIngestKey, async (req, res, next) => {
   try {
     const { title, company, date, rawText } = req.body || {};
 
@@ -132,6 +172,13 @@ app.post("/ingest/manual", async (req, res, next) => {
     }
     if (!rawText || typeof rawText !== "string") {
       res.status(400).json({ error: "rawText is required" });
+      return;
+    }
+    // SEC-3: Cap rawText to prevent CPU-exhaustion in the section parser.
+    if (Buffer.byteLength(rawText, "utf8") > MAX_RAW_TEXT_BYTES) {
+      res
+        .status(400)
+        .json({ error: `rawText exceeds maximum size of ${MAX_RAW_TEXT_BYTES / 1024} KB` });
       return;
     }
 

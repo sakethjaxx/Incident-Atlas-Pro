@@ -1,5 +1,12 @@
 node_modules
 dist
 .next
-.env
 .DS_Store
+
+# CFG-1: Ignore .env at root AND inside any sub-package directory.
+.env
+.env.local
+.env.*.local
+apps/**/.env
+apps/**/.env.local
+apps/**/.env.*.local

@@ -1,0 +1,220 @@
+{
+  "project": "Incident Atlas Pro",
+  "version": "v0.3",
+  "tickets": [
+    {
+      "id": "W1-001",
+      "title": "Design Database Schema for MVP",
+      "tags": ["design"],
+      "owner_agent": "architect",
+      "status": "TODO",
+      "scope": ["incident-ingest/docs/**"],
+      "acceptance_criteria": [
+        "Schema design complete for sources, documents, incidents, and sections"
+      ],
+      "tests_required": [],
+      "dependencies": []
+    },
+    {
+      "id": "W1-002",
+      "title": "Implement Database Migrations",
+      "tags": ["backend", "db"],
+      "owner_agent": "backend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**"],
+      "acceptance_criteria": [
+        "Migrations apply from scratch without data loss",
+        "Basic queries work"
+      ],
+      "tests_required": [
+        "migration smoke test"
+      ],
+      "dependencies": ["W1-001"]
+    },
+    {
+      "id": "W1-002-QA",
+      "title": "QA Review: DB Migrations",
+      "tags": ["review", "db"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**"],
+      "acceptance_criteria": [
+        "Review migration logic and index coverage"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-002"]
+    },
+    {
+      "id": "W1-003",
+      "title": "Implement File Upload Ingestion API Endpoint",
+      "tags": ["backend"],
+      "owner_agent": "backend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**"],
+      "acceptance_criteria": [
+        "API receives file, stores raw document locally or in S3",
+        "Inserts preliminary row into DB"
+      ],
+      "tests_required": [
+        "ingestion integration test"
+      ],
+      "dependencies": ["W1-002"]
+    },
+    {
+      "id": "W1-003-QA",
+      "title": "QA Review: Upload Ingestion API",
+      "tags": ["review", "security"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**"],
+      "acceptance_criteria": [
+        "Reject invalid file types",
+        "Verify metadata properly stored"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-003"]
+    },
+    {
+      "id": "W1-004",
+      "title": "Setup Async Queue Worker Infrastructure",
+      "tags": ["backend", "worker"],
+      "owner_agent": "backend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "Queue system (like BullMQ/Redis) boots and handles a dummy task"
+      ],
+      "tests_required": [
+        "queue health test"
+      ],
+      "dependencies": ["W1-002"]
+    },
+    {
+      "id": "W1-004-QA",
+      "title": "QA Review: Queue Worker Infra",
+      "tags": ["review", "perf"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "Verify worker can gracefully shutdown without ignoring tasks"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-004"]
+    },
+    {
+      "id": "W1-005",
+      "title": "Build Minimum Parse & Extract NLP Pipeline",
+      "tags": ["backend", "nlp"],
+      "owner_agent": "backend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/packages/nlp/**", "incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "Extract raw text from parsed document",
+        "Split text into sections (impact, timeline, root cause, mitigation)"
+      ],
+      "tests_required": [
+        "parser sectioning unit test"
+      ],
+      "dependencies": ["W1-004"]
+    },
+    {
+      "id": "W1-005-QA",
+      "title": "QA Review: Parse & Extract NLP Pipeline",
+      "tags": ["review"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/packages/nlp/**", "incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "Ensure NLP package handles malformed text without crashing"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-005"]
+    },
+    {
+      "id": "W1-006",
+      "title": "Implement Job Status Tracking Architecture",
+      "tags": ["backend"],
+      "owner_agent": "backend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**", "incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "API exposes an endpoint to track queue job status based on id"
+      ],
+      "tests_required": [
+        "job status integration test"
+      ],
+      "dependencies": ["W1-004"]
+    },
+    {
+      "id": "W1-006-QA",
+      "title": "QA Review: Job Status Architecture",
+      "tags": ["review", "perf"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/api/**", "incident-ingest/apps/worker/**"],
+      "acceptance_criteria": [
+        "Ensure endpoint responds fast enough and prevents polling DDOS"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-006"]
+    },
+    {
+      "id": "W1-007",
+      "title": "Build Initial Web App Skeleton and Incident List UI",
+      "tags": ["frontend", "ui"],
+      "owner_agent": "frontend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/web/**"],
+      "acceptance_criteria": [
+        "React/Next.js skeleton renders",
+        "Displays list of processed incidents fetching from API"
+      ],
+      "tests_required": [
+        "component render test"
+      ],
+      "dependencies": ["W1-002"]
+    },
+    {
+      "id": "W1-007-QA",
+      "title": "QA Review: Initial Web App",
+      "tags": ["review", "ui"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/web/**"],
+      "acceptance_criteria": [
+        "Validate React component lifecycle and network error handling"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-007"]
+    },
+    {
+      "id": "W1-008",
+      "title": "Develop Incident Detail View UI",
+      "tags": ["frontend", "ui"],
+      "owner_agent": "frontend_builder",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/web/**"],
+      "acceptance_criteria": [
+        "UI shows complete timeline and sections of a single incident"
+      ],
+      "tests_required": [
+        "route param UI test"
+      ],
+      "dependencies": ["W1-007"]
+    },
+    {
+      "id": "W1-008-QA",
+      "title": "QA Review: Incident Detail View",
+      "tags": ["review", "ui"],
+      "owner_agent": "qa_security",
+      "status": "TODO",
+      "scope": ["incident-ingest/apps/web/**"],
+      "acceptance_criteria": [
+        "Verify missing sections render null-states cleanly"
+      ],
+      "tests_required": [],
+      "dependencies": ["W1-008"]
+    }
+  ]
+}

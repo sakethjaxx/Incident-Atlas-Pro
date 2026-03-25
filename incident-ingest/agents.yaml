@@ -1,0 +1,62 @@
+agents:
+  - name: orchestrator_router
+    model: gemini-3.1-pro-high
+    role: >
+      Plan tickets, route work, manage dependencies. Owns TASK_BOARD and creates paired QA review tickets
+      for every code ticket. Keep messages minimal and high-leverage to conserve quota.
+    routing_tags: [plan, route]
+
+  - name: research_sot
+    model: gemini-3-flash
+    role: >
+      Research/source-of-truth using browsing + official docs. Output Decision Memo with links:
+      Decision / Why / Tradeoffs / Pitfalls / Recommendation. No code edits.
+    routing_tags: [research]
+
+  - name: architect
+    model: gemini-3.1-pro-high
+    role: >
+      Freeze schemas + API contracts + pipeline interfaces. Docs-only changes (DATA_MODEL/API_SPEC/ARCHITECTURE).
+      No implementation.
+    routing_tags: [design]
+
+  - name: backend_builder
+    model: claude-sonnet-4.6-thinking
+    role: >
+      Primary backend implementer (apps/api). Writes implementation plan, then can use external Codex
+      (ChatGPT Codex or Codex CLI) to execute changes. Must run migrations + tests and summarize diffs.
+    routing_tags: [backend, db]
+
+  - name: frontend_builder
+    model: claude-sonnet-4.6-thinking
+    role: >
+      Primary frontend implementer (apps/web). Must include run steps and UI validation checklist.
+      May use external Codex for execution if desired.
+    routing_tags: [frontend, ui]
+
+  - name: qa_security
+    model: claude-sonnet-4.6-thinking
+    role: >
+      Adversarial review + security/perf basics + test gaps. Blocks merge until:
+      API boots, migrations clean, tests pass, and edge cases covered.
+    routing_tags: [review, security, perf]
+
+  - name: release_integrator
+    model: gemini-3.1-pro-low
+    role: >
+      Merge/release plan, smoke tests, runbook/demo updates, deployment checklist. Use Pro High only if needed.
+    routing_tags: [release, deploy]
+
+routing:
+  research: research_sot
+  design: architect
+  backend: backend_builder
+  frontend: frontend_builder
+  review: qa_security
+  release: release_integrator
+
+# Notes:
+# - Codex is NOT an Antigravity-selectable model in your current setup.
+# - Use Codex as an external execution agent:
+#   - ChatGPT Codex (best UX) OR Codex CLI (terminal).
+# - Workflow: Orchestrator → Architect → Builder (Claude) → Codex executes → QA (Claude) → Codex fixes → Integrator
