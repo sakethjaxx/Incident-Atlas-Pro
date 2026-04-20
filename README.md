@@ -156,7 +156,6 @@ The production-style stack includes:
 - [Data Model](./incident-ingest/docs/DATA_MODEL.md)
 - [Runbook](./incident-ingest/docs/RUNBOOK.md)
 - [Deployment Readiness](./incident-ingest/docs/DEPLOYMENT_READINESS.md)
-- [Sprint 1 Status](./incident-ingest/docs/SPRINT_1_STATUS.md)
 
 ## Status
 

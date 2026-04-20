@@ -16,7 +16,7 @@ This runbook provides instructions for deploying, operating, and troubleshooting
    ```
 2. Configure environment variables in `apps/api/.env` and `apps/web/.env`.
    - Ensure database connection string is set (`DATABASE_URL`).
-   - Ensure required API keys (e.g., Gemini) are present.
+   - Ensure any required external service API keys are present.
 
 ## Database Migrations
 To run schema migrations on a fresh or existing database:

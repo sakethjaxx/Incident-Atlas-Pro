@@ -1,6 +1,5 @@
 # Sources (Document Resources)
 
-**Owner:** Research (Gemini) drafts, Architect finalizes, Orchestrator locks scope.  
 **Updated:** 2026-03-07
 
 ## Phase 1 sources (start here)

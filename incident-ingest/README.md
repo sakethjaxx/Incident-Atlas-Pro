@@ -55,8 +55,6 @@ During incidents, teams lose time searching scattered knowledge across postmorte
 | `@app/api` unit | 2 | ✅ all green |
 | `@app/api` integration | 53 | ✅ all green |
 
-See [Sprint 1 Status](./docs/SPRINT_1_STATUS.md) for the full completion checklist.
-
 ## Run locally
 
 1. Start infrastructure

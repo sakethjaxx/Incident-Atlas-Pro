@@ -18,9 +18,6 @@ During outages, engineers waste time searching scattered knowledge (postmortems,
 6. **Evidence-first Q&A (optional generation)** with citations + refusal when evidence insufficient
 7. **Postmortem outline generator** (template/questions; no invented facts)
 
-## Agentic execution note (no Perplexity credits)
-This project uses a 7-role agentic workflow. If Perplexity API is unavailable, the **Research / Source-of-truth** role runs on **Gemini + web browsing + official docs** and must still produce links and a decision memo.
-
 ## Non-goals (MVP scope control)
 - No enterprise connectors requiring paid keys
 - No fully automated “perfect” scraping; best-effort extraction + fallback manual upload
