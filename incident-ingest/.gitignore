@@ -14,3 +14,5 @@ apps/**/.env.*.local
 
 # Runtime uploads are persisted via Docker volumes in production.
 uploads/
+
+docs/
