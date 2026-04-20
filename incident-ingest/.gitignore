@@ -5,8 +5,12 @@ dist
 
 # CFG-1: Ignore .env at root AND inside any sub-package directory.
 .env
+.env.prod
 .env.local
 .env.*.local
 apps/**/.env
 apps/**/.env.local
 apps/**/.env.*.local
+
+# Runtime uploads are persisted via Docker volumes in production.
+uploads/

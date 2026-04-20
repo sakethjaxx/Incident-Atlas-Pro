@@ -1055,3 +1055,20 @@ code, pre {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Progress Bar ── */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-surface);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--brand-from), var(--brand-to));
+  transition: width 0.3s ease;
+}

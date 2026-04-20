@@ -30,6 +30,14 @@ export interface ManualIngestPayload {
   date?: string;
 }
 
+// Paginated API envelope — GET /incidents returns this shape
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 // Sprint 2 — search
 export interface SearchResult {
   incident: Incident;
@@ -48,6 +56,24 @@ export interface SearchParams {
 export interface SimilarIncident extends Incident {
   similarityReason: string;
   score: number;
+}
+
+// ─── HTTP layer ───────────────────────────────────────────────────────────────
+
+export interface JobStatus {
+  id: string;
+  status: "waiting" | "active" | "completed" | "failed";
+  progress?: number;
+  result?: any;
+  error?: string;
+  documentId?: string;
+  parseStatus?: string;
+}
+
+export interface UploadResponse {
+  jobId: string;
+  documentId: string;
+  bullmqJobId?: string;
 }
 
 // ─── HTTP layer ───────────────────────────────────────────────────────────────
@@ -84,11 +110,57 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN as string | undefined;
+
+export async function uploadFile(file: File): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers["Authorization"] = `Bearer ${ADMIN_TOKEN}`;
+  }
+
+  const res = await fetch(`${API_URL}/ingest/upload`, {
+    method: "POST",
+    body: formData,
+    headers,
+    // Note: Do NOT set Content-Type header. The browser automatically sets it
+    // to multipart/form-data with the correct boundary parameter.
+  });
+
+  if (!res.ok) {
+    let message = `Upload failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string") {
+        message = data.error;
+      }
+    } catch {
+      // Ignore
+    }
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<UploadResponse>;
+}
+
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
-/** GET /incidents — list all incidents (summary only) */
+/**
+ * GET /incidents — list all incidents (summary only).
+ * The API returns a paginated envelope { data, total, page, limit };
+ * we unwrap .data here so all consumers get a plain Incident[].
+ */
 export function getIncidents(): Promise<Incident[]> {
-  return request<Incident[]>("/incidents");
+  return request<PaginatedResponse<Incident>>("/incidents").then((res) => {
+    // Defensive: handle both the paginated envelope AND a bare array
+    // (bare array is returned by the legacy index.js path that some
+    //  test environments may still hit).
+    if (Array.isArray(res)) return res as unknown as Incident[];
+    if (res && Array.isArray(res.data)) return res.data;
+    return [];
+  });
 }
 
 /** GET /incidents/:id — full detail with sections */
@@ -104,6 +176,11 @@ export function createManualIncident(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+/** GET /jobs/:id — poll job status */
+export function getJobStatus(id: string): Promise<JobStatus> {
+  return request<JobStatus>(`/jobs/${id}`);
 }
 
 // ─── Sprint 2 stubs (will be wired once API endpoints exist) ─────────────────

@@ -1,0 +1,10 @@
+Impact:
+The database went down and caused 500 errors across the site for 2 hours.
+Timeline:
+10:00 - issue started
+10:15 - found issue
+12:00 - fixed issue
+Root Cause:
+Bad config
+Fix:
+Rollback config

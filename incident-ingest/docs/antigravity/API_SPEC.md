@@ -4,17 +4,27 @@
 
 ### 1. Document Management & Ingestion
 
-**`POST /documents/upload`**
-- **Description:** Upload a raw incident document.
-- **Request Body:** Multipart form containing the file.
-- **Response:** Returns the created document object with `id` and `upload_status`.
+**`POST /ingest/upload`**
+- **Description:** Upload a raw incident document (pdf, md, txt).
+- **Request Body:** `multipart/form-data` with `file` field.
+- **Response:** 
+  ```json
+  {
+    "jobId": "UUID"
+  }
+  ```
 
-**`GET /documents/:id`**
-- **Description:** Retrieve the raw uploaded document and its status.
-
-**`POST /ingest/:documentId`**
-- **Description:** Trigger the extraction pipeline (chunking, entity extraction) for a previously uploaded document.
-- **Response:** `202 Accepted` (Processing async)
+**`GET /jobs/:jobId`**
+- **Description:** Get the status of an ingestion job.
+- **Response:**
+  ```json
+  {
+    "jobId": "UUID",
+    "status": "waiting | active | completed | failed",
+    "documentId": "UUID (null if not yet created)",
+    "error": "Error message (if failed)"
+  }
+  ```
 
 ### 2. Search & Retrieval
 **`GET /api/v1/search`**

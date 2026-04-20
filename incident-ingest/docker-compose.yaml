@@ -13,6 +13,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-incident_ingest}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:7-alpine
@@ -21,6 +26,39 @@ services:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: incident_ingest_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-incident_ingest}
+      REDIS_URL: redis://redis:6379
+      WORKER_CONCURRENCY: "2"
+      # Write heartbeat to a fixed path so the healthcheck shell can stat it.
+      WORKER_HEALTH_FILE: /tmp/worker-heartbeat.json
+    healthcheck:
+      # Pass if heartbeat file was written within the last 30 seconds.
+      # BusyBox (Alpine) stat uses `-c %Y` for mtime epoch — `find -newermt` is not supported.
+      test:
+        - "CMD-SHELL"
+        - "test -f /tmp/worker-heartbeat.json && test $(( $(date +%s) - $(stat -c %Y /tmp/worker-heartbeat.json) )) -lt 30"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
 
 volumes:
   pgdata:

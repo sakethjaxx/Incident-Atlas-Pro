@@ -1,0 +1,145 @@
+# ── Production Compose — Incident Atlas Pro ──────────────────────────────────
+#
+# Usage:
+#   # 1. Create .env.prod with all required secrets (see .env.prod.example)
+#   # 2. Build + start
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build --wait
+#   # 3. Verify health
+#   docker compose -f docker-compose.prod.yml ps
+#
+# All secrets are env-driven. NEVER hardcode credentials in this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: incident_prod_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-incident_ingest}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    # No host port binding — only reachable by API/worker via the Docker network.
+    expose:
+      - "5432"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: incident_prod_redis
+    # Require a password in production; set via REDIS_PASSWORD in .env.prod.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.prod}
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy noeviction
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    expose:
+      - "6379"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── API ──────────────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: incident_prod_api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-incident_ingest}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env.prod}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      UPLOAD_DIR: /app/apps/api/uploads
+    volumes:
+      - api_uploads:/app/apps/api/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ── Worker ───────────────────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: incident_prod_worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-incident_ingest}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WORKER_HEALTH_FILE: /tmp/worker-heartbeat.json
+    healthcheck:
+      # Pass if heartbeat file was written within the last 30 seconds.
+      # BusyBox (Alpine) stat uses `-c %Y` for mtime epoch seconds.
+      # `find -newermt` is NOT supported by BusyBox and would always fail.
+      test:
+        - "CMD-SHELL"
+        - "test -f /tmp/worker-heartbeat.json && test $(( $(date +%s) - $(stat -c %Y /tmp/worker-heartbeat.json) )) -lt 30"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  pgdata:
+    name: incident_prod_pgdata
+  redisdata:
+    name: incident_prod_redisdata
+  api_uploads:
+    name: incident_prod_uploads

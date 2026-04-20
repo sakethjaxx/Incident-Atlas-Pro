@@ -119,4 +119,5 @@ model Section {
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 
   @@map("sections")
+  @@index([incidentId])
 }

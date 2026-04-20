@@ -17,7 +17,7 @@
  * @returns {Promise<{incident: object|null, error: string|null}>}
  */
 
-import { splitSections, buildSummary } from "./parser.js";
+import { parseSections, summarize } from "@pkg/nlp";
 import { prisma } from "./prisma.js";
 
 /**
@@ -57,8 +57,8 @@ export async function runIngest(documentId) {
       data: { stage: "parse" },
     });
 
-    const sections = splitSections(doc.rawText);
-    const summaryText = buildSummary(doc.rawText);
+    const sections = parseSections(doc.rawText);
+    const summaryText = summarize(doc.rawText);
 
     // ── Stage 3: persist incident + sections ─────────────────────────────
     await prisma.ingestJob.updateMany({

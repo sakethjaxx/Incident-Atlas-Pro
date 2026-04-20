@@ -1,45 +1,128 @@
-# Incident Ingest (Week 1 Skeleton)
+# Incident Atlas Pro
+
+Incident Atlas Pro is an incident-intelligence system for turning raw postmortems, outage reports, and incident notes into structured operational knowledge.
+
+The MVP is being built as an 8-week roadmap across four sprints:
+
+- Sprint 1: foundations for schema, ingestion, async processing, and web UI
+- Sprint 2: search and similarity with keyword plus vector retrieval
+- Sprint 3: knowledge graph extraction and graph exploration
+- Sprint 4: evals, Q&A, rate limits, deployment, and demo readiness
+
+## What the project solves
+
+During incidents, teams lose time searching scattered knowledge across postmortems, runbooks, status pages, and internal notes. Incident Atlas Pro is designed to answer:
+
+- Have we seen this incident pattern before?
+- What symptoms, triggers, and root causes tend to show up together?
+- Which fixes actually worked in similar incidents?
+
+## Current stack
+
+- Node.js + Express
+- Vite + React 18
+- PostgreSQL + Prisma
+- BullMQ + Redis
+- pgvector
+
+## Current status
+
+**Sprint 1:** ✅ **COMPLETE** — All code shipped, QA verified, 124 tests passing
+
+### Sprint 1 — All tickets DONE
+
+| Ticket | Title | Status |
+|--------|-------|--------|
+| ARCH-001 | Freeze Sprint 1 contract and align docs | ✅ DONE |
+| W1-003 | Real file upload ingestion (`POST /ingest/upload`) | ✅ DONE |
+| W1-003-QA | QA review: file upload ingestion | ✅ DONE |
+| W1-004 | Async queue worker (BullMQ + Redis) | ✅ DONE |
+| W1-004-QA | QA review: queue worker | ✅ DONE |
+| W1-005 | NLP parsing package (`@pkg/nlp`) | ✅ DONE |
+| W1-005-QA | QA review: NLP package | ✅ DONE |
+| W1-006 | Job status endpoint (`GET /jobs/:jobId`) | ✅ DONE |
+| W1-006-QA | QA review: job status endpoint | ✅ DONE |
+| W1-009 | Upload UI: async file upload with job polling | ✅ DONE |
+| W1-009-QA | QA review: upload UI | ✅ DONE |
+| Sprint1-Release | Smoke tests + doc sync | ✅ DONE |
+
+### Test results (2026-04-20)
+
+| Suite | Tests | Result |
+|-------|-------|--------|
+| `@pkg/nlp` | 40 | ✅ all green |
+| `@app/worker` unit | 29 | ✅ all green |
+| `@app/api` unit | 2 | ✅ all green |
+| `@app/api` integration | 53 | ✅ all green |
+
+See [Sprint 1 Status](./docs/SPRINT_1_STATUS.md) for the full completion checklist.
 
 ## Run locally
-1) Start DB
-   docker compose up -d
 
-2) Install deps
-   pnpm install
+1. Start infrastructure
 
-3) Configure env
-   cp apps/api/.env.example apps/api/.env
-   cp apps/web/.env.example apps/web/.env
+```bash
+docker compose up -d
+```
 
-4) Migrate DB
-   pnpm api:migrate
+2. Install dependencies
 
-5) Run API + Web
-   pnpm dev
+```bash
+pnpm install
+```
 
-API: http://localhost:3001
-Web: http://localhost:5173
+3. Configure environment files
 
-Environment variables:
-- API uses `DATABASE_URL`
-- Web uses `VITE_API_URL` (legacy Next.js `NEXT_PUBLIC_API_URL` is documented in `.env.example` but unused)
+```bash
+cp apps/api/.env.example apps/api/.env
+cp apps/web/.env.example apps/web/.env
+```
 
-## Web app (Vite SPA)
-Routes:
-- `/` Dashboard
-- `/incidents` Incident list
-- `/incidents/:id` Incident detail with sections
-- `/upload` Manual ingestion form
+4. Run migrations
 
-## API endpoints
-- `POST /ingest/manual` Create incident + sections from raw text
-- `GET /incidents` List incidents
-- `GET /incidents/:id` Incident detail (includes sections)
+```bash
+pnpm api:migrate
+```
 
-## Manual ingest
-POST http://localhost:3001/ingest/manual
+5. Start the API and web app
 
-Payload example:
+```bash
+pnpm dev
+```
+
+Local services:
+
+- API: `http://localhost:3001`
+- Web: `http://localhost:5173`
+- PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
+
+## Available today
+
+Web routes:
+
+- `/` dashboard
+- `/incidents` incident list
+- `/incidents/:id` incident detail
+- `/upload` async file upload with job status polling
+
+API endpoints:
+
+- `GET /health` liveness check
+- `POST /ingest/upload` multipart txt/md upload → enqueue parse job → returns `{ jobId, documentId }`
+- `POST /ingest/manual` synchronous raw text ingest → returns full incident
+- `POST /ingest/:documentId` enqueue job for previously uploaded document
+- `GET /jobs/:jobId` poll async job status (rate-limited)
+- `GET /incidents` list incidents
+- `GET /incidents/:id` incident with sections
+- `GET /documents` list uploaded documents
+- `GET /sources` list sources
+- `POST /sources` create source (admin auth)
+
+## Manual ingest example
+
+`POST http://localhost:3001/ingest/manual`
+
 ```json
 {
   "title": "Payments outage",
@@ -48,3 +131,17 @@ Payload example:
   "rawText": "Impact:\nCheckout failed for 32 minutes.\n\nTimeline:\n10:03 UTC alarms fired.\n10:22 UTC rollback complete.\n\nRoot Cause:\nBad deploy to payment-service.\n\nFix:\nPin dependency + add canary."
 }
 ```
+
+## Roadmap
+
+- Sprint 2: keyword search, embeddings, similarity endpoints, and search UI
+- Sprint 3: entity extraction, graph APIs, and graph explorer UI
+- Sprint 4: eval harness, citations-first Q&A, auth/rate limits, deployable demo
+
+## Project docs
+
+- [Project plan](./docs/PROJECT_PLAN.md)
+- [Project spec](./docs/PROJECT_SPEC.md)
+- [Architecture](./docs/ARCHITECTURE.md)
+- [API spec](./docs/API_SPEC.md)
+- [Data model](./docs/DATA_MODEL.md)

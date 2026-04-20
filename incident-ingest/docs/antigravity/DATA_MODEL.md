@@ -5,11 +5,14 @@
 ### `documents`
 Stores raw uploaded incident reports before processing.
 - `id` (UUID, Primary Key)
+- `job_id` (UUID, indexed) - Reference to the ingestion background job.
 - `filename` (String)
 - `raw_content` (Text)
-- `mime_type` (String)
-- `upload_status` (Enum: pending, ingested, error)
+- `mime_type` (String - pdf/md/txt)
+- `parse_status` (Enum: waiting, active, completed, failed) - Job lifecycle tracking.
+- `error_details` (Text, nullable) - Populated if parse_status is failed.
 - `created_at` (Timestamp)
+- `updated_at` (Timestamp)
 
 ### `incidents`
 Stores core metadata for each ingested incident.

@@ -30,9 +30,14 @@ describe("Table existence (migration smoke test)", () => {
   for (const table of expectedTables) {
     it(`table "${table}" exists`, async () => {
       const rows = await prisma.$queryRawUnsafe(
-        `SELECT to_regclass('public.${table}') AS tbl`
+        `SELECT EXISTS (
+           SELECT 1
+           FROM information_schema.tables
+           WHERE table_schema = 'public'
+             AND table_name = '${table}'
+         ) AS present`
       );
-      expect(rows[0].tbl).toBe(table);
+      expect(rows[0].present).toBe(true);
     });
   }
 });
