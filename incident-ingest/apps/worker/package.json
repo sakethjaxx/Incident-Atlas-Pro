@@ -1,0 +1,20 @@
+{
+  "name": "@app/worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/worker.js",
+    "dev": "node --watch src/worker.js",
+    "test": "vitest run src/tests --reporter=verbose",
+    "test:unit": "vitest run src/tests/processor.test.js src/tests/resolve_text.test.js src/tests/health.test.js --reporter=verbose"
+  },
+  "dependencies": {
+    "@pkg/nlp": "workspace:*",
+    "@prisma/client": "^5.18.0",
+    "bullmq": "^5.7.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}

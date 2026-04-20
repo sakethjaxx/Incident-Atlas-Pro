@@ -1,9 +1,11 @@
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import Dashboard from "./routes/Dashboard";
 import Incidents from "./routes/Incidents";
 import IncidentDetail from "./routes/IncidentDetail";
 import Upload from "./routes/Upload";
 import NotFound from "./routes/NotFound";
+import { getHealth } from "./lib/api";
 
 const NAV_ITEMS = [
   { to: "/", icon: "⬡", label: "Dashboard", exact: true },
@@ -41,6 +43,19 @@ function Breadcrumb() {
 }
 
 export default function App() {
+  const { data: health, isLoading: healthLoading } = useQuery({
+    queryKey: ["health"],
+    queryFn: getHealth,
+    refetchInterval: 30_000,
+    retry: false,
+  });
+
+  const apiStatus = healthLoading
+    ? { label: "Checking…", color: "var(--text-muted)", dot: "var(--text-muted)" }
+    : health?.ok
+    ? { label: "API Live", color: "var(--brand)", dot: "var(--brand)" }
+    : { label: "API Down", color: "var(--danger)", dot: "var(--danger)" };
+
   return (
     <div className="app-shell">
       {/* Sidebar */}
@@ -96,9 +111,23 @@ export default function App() {
         <header className="topbar">
           <Breadcrumb />
           <div className="topbar-spacer" />
-          <span className="badge badge-brand">
-            <span className="dot-pulse" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--brand)", display: "inline-block" }} />
-            API Live
+          <span
+            className="badge"
+            style={{ borderColor: apiStatus.dot, color: apiStatus.color }}
+            title={`API at ${import.meta.env.VITE_API_URL || "http://localhost:3001"}`}
+          >
+            <span
+              className={health?.ok ? "dot-pulse" : undefined}
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: apiStatus.dot,
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+            {apiStatus.label}
           </span>
         </header>
 

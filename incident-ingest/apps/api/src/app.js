@@ -10,6 +10,10 @@ import { incidentsRouter } from "./routes/incidents.js";
 import { searchRouter } from "./routes/search.js";
 import { jobsRouter } from "./routes/jobs.js";
 
+// W4-H3: Restrict CORS to a known origin; override via CORS_ORIGIN in production.
+// (index.js had this fix; app.js — the file actually imported by server.js — did not.)
+const ALLOWED_ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
+
 /**
  * Build and return the Express application without starting the server.
  * Exported so vitest + supertest can import it without binding to a port.
@@ -17,8 +21,12 @@ import { jobsRouter } from "./routes/jobs.js";
 export function buildApp() {
   const app = express();
 
-  app.use(cors());
+  // W6-M1: Ensure rate-limits check the actual user IP if deployed behind proxies
+  app.set("trust proxy", 1);
+
+  app.use(cors({ origin: ALLOWED_ORIGIN, methods: ["GET", "POST", "OPTIONS"] }));
   app.use(express.json({ limit: "10mb" }));
+
 
   // Routes
   app.use(healthRouter);

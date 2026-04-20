@@ -1,28 +1,72 @@
-# Incident Atlas Pro - Demo Script (5 minutes)
+# Incident Atlas Pro — Demo Script (Week 1 / Sprint 1 Foundation)
 
-## Preparation (Pre-Demo)
-- Start the full stack locally (`pnpm run dev`).
-- Ensure the database is populated with a few seed incidents (e.g., past known outages or synthetic examples).
-- Open the Web UI (`http://localhost:3000`).
+> **Sprint scope:** Ingestion pipeline only (upload → queue → parse → structured incident).  
+> Search, similarity, and knowledge graph are Sprint 2–3 features.
 
-## The Demo (Action & Narrative)
+---
 
-### 1. Ingestion & Extraction (1 minute)
-**Action:** Go to the "Ingest" page. Upload a raw Markdown outage report (or paste a status page link).
-**Narrative:** "During an incident, engineers need context fast. Incident Atlas Pro ingests raw incident documents and automatically sections them into Impact, Timeline, Root Cause, and Mitigation using our ingestion pipeline."
+## Pre-Demo Checklist
 
-### 2. Hybrid Search (1 minute)
-**Action:** Navigate to the "Search" page. Enter a query like: `latency spike after deploy + 502s`. Filter by a specific date range if applicable.
-**Narrative:** "Using hybrid vector and keyword search, we instantly surface exactly relevant past incidents. Notice how the search highlights the specific matched sections within the incident."
+```bash
+docker compose up -d --wait          # db, redis, worker all healthy
+pnpm run api:migrate                  # schema applied from scratch
+pnpm --filter @app/api dev           # API on :3001
+pnpm --filter @app/web dev           # Web UI on :3000
+```
 
-### 3. Incident Detail & Similarity (1 minute)
-**Action:** Click the top result to open the Incident Detail view. Scroll to the "Similar Incidents" panel.
-**Narrative:** "In the detail view, the system flags related past outages. Crucially, it provides 'reasons' for the similarity—such as matched symptoms or the same trigger—helping responders immediately identify repeating patterns."
+Seed file ready: `test-incident.txt` — a short Markdown postmortem with Impact / Root Cause / Mitigation headings.
 
-### 4. Knowledge Graph (1 minute)
-**Action:** Click over to the "Graph Explorer". Select a "Service" or "Root Cause" node.
-**Narrative:** "To understand platform-wide vulnerabilities, the Knowledge Graph plots the relationships between symptoms, causes, and services. Clicking on any edge takes us directly to the source evidence in the original incident."
+---
 
-### 5. (Optional) Q&A (1 minute)
-**Action:** Open the Q&A interface and ask, "What usually causes database connection timeouts?"
-**Narrative:** "Our evidence-first Q&A answers the question by citing exact, hard evidence from our past incidents, or explicitly refusing to answer if no historical data supports the claim. No hallucinations, just facts."
+## The Demo (5 minutes)
+
+### 1. Ingest a raw incident document (2 min)
+
+**Action:** Open `http://localhost:3000` → navigate to the **Ingest** page → drag-and-drop `test-incident.txt`.
+
+**Narrative:**  
+> "During any live incident or postmortem, engineers are drowning in raw text—Slack threads, status pages, Markdown docs. Incident Atlas Pro accepts whatever format you have and automatically structures it."
+
+**Watch:** The upload button shows progress; the response panel displays a `jobId` and `documentId`.
+
+---
+
+### 2. Show job pipeline (1.5 min)
+
+**Action:** The UI polls `/jobs/<jobId>`. Watch the status badge transition:  
+`queued` → `processing` → **`completed`**
+
+**Narrative:**  
+> "In the background, our BullMQ worker picks up the job from Redis, extracts text, and slices it into typed sections—Impact, Timeline, Root Cause, Mitigation—then persists everything to Postgres. The worker has a heartbeat healthcheck so it self-heals if it ever goes zombie."
+
+**Callout:** Point to the terminal with `pnpm --filter @app/worker dev` showing live log lines:  
+```
+[worker] → Processing job <uuid> | documentId=<uuid>
+[worker:health] Heartbeat writing to /tmp/worker-heartbeat.json every 10s
+[worker] ✓ Job <uuid> done | incidentId=<uuid>
+```
+
+---
+
+### 3. View the structured incident (1.5 min)
+
+**Action:** Click through to the **Incident Detail** view for the newly created incident.
+
+**Narrative:**  
+> "The raw blob is now a structured record. You can see the extracted sections highlighted independently. This is the data foundation that Sprint 2's hybrid search and Sprint 3's knowledge graph will build on."
+
+**Callout:** Show the `sections` array in the API response:  
+```bash
+curl http://localhost:3001/incidents/<incidentId> | jq '.sections[].type'
+# → "impact" "rootcause" "fix"
+```
+
+---
+
+## Sprint 1 Done. What's Next?
+
+| Sprint | Upcoming Feature |
+|---|---|
+| 2 | Embeddings + vector store + hybrid search (FTS + pgvector) |
+| 3 | Similar incidents panel with reasons |
+| 4 | Knowledge graph explorer + eval harness |

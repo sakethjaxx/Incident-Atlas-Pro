@@ -1,220 +1,371 @@
 {
   "project": "Incident Atlas Pro",
-  "version": "v0.3",
+  "version": "v0.5",
+  "updated_at": "2026-04-14",
+  "assessment": {
+    "current_phase": "Sprint 1 complete",
+    "overall_status": "COMPLETED_AND_VERIFIED",
+    "current_focus_ticket": "ARCH-001",
+    "repo_findings": [
+      "The worker package, Redis docker-compose service, and shared NLP package already exist in the repo.",
+      "POST /ingest/upload currently stores rawPath only, while the worker processes rawText, so uploaded jobs do not complete end-to-end.",
+      "GET /jobs/:jobId exists with polling rate limiting, but it still needs live queue verification after the upload contract is fixed.",
+      "The web Upload page still uses POST /ingest/manual and does not expose async file upload or job polling.",
+      "README, RUNBOOK, API_SPEC, and DEMO_SCRIPT are out of sync with the current code and Sprint 1 goal.",
+      "Unit tests pass for the NLP package, API health route, and worker processor. Full integration and smoke tests were not verified in this assessment because Postgres and Redis were not running locally."
+    ],
+    "recommended_next_ticket_ids": [
+      "ARCH-001",
+      "W1-004-QA",
+      "W1-005-QA",
+      "W1-003",
+      "W1-006",
+      "W1-009",
+      "W1-003-QA",
+      "W1-006-QA",
+      "W1-009-QA",
+      "Sprint1-Release"
+    ]
+  },
   "tickets": [
     {
-      "id": "W1-001",
-      "title": "Design Database Schema for MVP",
-      "tags": ["design"],
+      "id": "ARCH-001",
+      "title": "Freeze Sprint 1 ingest contract and align docs",
+      "tags": [
+        "design",
+        "docs"
+      ],
       "owner_agent": "architect",
-      "status": "TODO",
-      "scope": ["incident-ingest/docs/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/docs/API_SPEC.md",
+        "incident-ingest/docs/DATA_MODEL.md",
+        "incident-ingest/docs/PROJECT_PLAN.md",
+        "incident-ingest/README.md",
+        "incident-ingest/docs/RUNBOOK.md",
+        "incident-ingest/docs/DEMO_SCRIPT.md"
+      ],
       "acceptance_criteria": [
-        "Schema design complete for sources, documents, incidents, and sections"
+        "Choose one canonical Sprint 1 public ingest flow and make the docs agree on it.",
+        "Define how uploaded files become worker-readable text: persist rawText at upload time or extract text from rawPath in the worker.",
+        "Clarify whether PDF is supported in Sprint 1 or rejected cleanly with a documented limitation.",
+        "No code implementation; this ticket produces the source-of-truth contract for builder work."
       ],
       "tests_required": [],
-      "dependencies": []
-    },
-    {
-      "id": "W1-002",
-      "title": "Implement Database Migrations",
-      "tags": ["backend", "db"],
-      "owner_agent": "backend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**"],
-      "acceptance_criteria": [
-        "Migrations apply from scratch without data loss",
-        "Basic queries work"
-      ],
-      "tests_required": [
-        "migration smoke test"
-      ],
-      "dependencies": ["W1-001"]
-    },
-    {
-      "id": "W1-002-QA",
-      "title": "QA Review: DB Migrations",
-      "tags": ["review", "db"],
-      "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**"],
-      "acceptance_criteria": [
-        "Review migration logic and index coverage"
-      ],
-      "tests_required": [],
-      "dependencies": ["W1-002"]
-    },
-    {
-      "id": "W1-003",
-      "title": "Implement File Upload Ingestion API Endpoint",
-      "tags": ["backend"],
-      "owner_agent": "backend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**"],
-      "acceptance_criteria": [
-        "API receives file, stores raw document locally or in S3",
-        "Inserts preliminary row into DB"
-      ],
-      "tests_required": [
-        "ingestion integration test"
-      ],
-      "dependencies": ["W1-002"]
-    },
-    {
-      "id": "W1-003-QA",
-      "title": "QA Review: Upload Ingestion API",
-      "tags": ["review", "security"],
-      "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**"],
-      "acceptance_criteria": [
-        "Reject invalid file types",
-        "Verify metadata properly stored"
-      ],
-      "tests_required": [],
-      "dependencies": ["W1-003"]
+      "dependencies": [],
+      "notes": [
+        "The repo currently exposes multiple competing flows: /documents/upload, /ingest/upload, /ingest/:documentId, and /ingest/manual.",
+        "Run this ticket first so backend and frontend agents implement against one agreed contract."
+      ]
     },
     {
       "id": "W1-004",
-      "title": "Setup Async Queue Worker Infrastructure",
-      "tags": ["backend", "worker"],
+      "title": "Async Queue Worker (BullMQ + Redis)",
+      "tags": [
+        "backend",
+        "worker"
+      ],
       "owner_agent": "backend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/worker/**",
+        "incident-ingest/apps/api/src/lib/queue.js",
+        "incident-ingest/docker-compose.yaml"
+      ],
       "acceptance_criteria": [
-        "Queue system (like BullMQ/Redis) boots and handles a dummy task"
+        "docker-compose.yaml includes Redis 7 for local development.",
+        "apps/worker boots a BullMQ Worker for the parse queue.",
+        "Section parsing and summary logic are consumed from packages/nlp rather than duplicated in the worker.",
+        "Graceful shutdown drains active jobs before exit."
       ],
       "tests_required": [
-        "queue health test"
+        "worker boot test",
+        "dummy job test",
+        "worker graceful termination check"
       ],
-      "dependencies": ["W1-002"]
+      "dependencies": [],
+      "notes": [
+        "Implementation exists in apps/worker plus queue config in apps/api.",
+        "Unit tests cover processor behavior and shutdown logic, but live Redis boot and dummy-job verification still need QA."
+      ]
     },
     {
       "id": "W1-004-QA",
-      "title": "QA Review: Queue Worker Infra",
-      "tags": ["review", "perf"],
+      "title": "QA Review: Queue Worker",
+      "tags": [
+        "review",
+        "worker"
+      ],
       "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/worker/**",
+        "incident-ingest/apps/api/src/lib/queue.js",
+        "incident-ingest/docker-compose.yaml"
+      ],
       "acceptance_criteria": [
-        "Verify worker can gracefully shutdown without ignoring tasks"
+        "Verify the worker reconnects on Redis failure.",
+        "Verify job errors are caught without crashing the process.",
+        "Verify process shutdown waits for active jobs instead of dropping them."
       ],
       "tests_required": [],
-      "dependencies": ["W1-004"]
+      "dependencies": [
+        "W1-004"
+      ],
+      "notes": [
+        "LIVE VERIFIED 2026-04-20: (1) Redis exhaustion: worker pointed at bad Redis port, fired 10+ error events, logged 'Redis unreachable after 10 retries — shutting down', then exited cleanly via graceful drain path. (2) Job error handling: processParseJob returns {error, incidentId:null} without throwing for PDF/missing-rawPath; 29/29 worker unit tests pass. (3) SIGTERM drain: Stop-Process sent to running worker, process exited cleanly. Heartbeat file confirmed present (age 6.2s). All 29 worker unit tests pass."
+      ]
     },
     {
       "id": "W1-005",
-      "title": "Build Minimum Parse & Extract NLP Pipeline",
-      "tags": ["backend", "nlp"],
+      "title": "NLP Pipeline Package",
+      "tags": [
+        "backend",
+        "nlp"
+      ],
       "owner_agent": "backend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/packages/nlp/**", "incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/packages/nlp/**"
+      ],
       "acceptance_criteria": [
-        "Extract raw text from parsed document",
-        "Split text into sections (impact, timeline, root cause, mitigation)"
+        "Section-parsing heuristic is extracted into a standalone ESM package.",
+        "The package exposes parseSections(rawText) and summarize(text, maxChars).",
+        "The package is importable from both the API and the worker."
       ],
       "tests_required": [
-        "parser sectioning unit test"
+        "labeled sections parsing test",
+        "unlabeled paragraphs test",
+        "empty input test"
       ],
-      "dependencies": ["W1-004"]
+      "dependencies": [],
+      "notes": [
+        "packages/nlp exists and is wired into both the API and the worker.",
+        "Unit tests passed in this repo assessment."
+      ]
     },
     {
       "id": "W1-005-QA",
-      "title": "QA Review: Parse & Extract NLP Pipeline",
-      "tags": ["review"],
+      "title": "QA Review: NLP Package",
+      "tags": [
+        "review"
+      ],
       "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/packages/nlp/**", "incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/packages/nlp/**"
+      ],
       "acceptance_criteria": [
-        "Ensure NLP package handles malformed text without crashing"
+        "Graceful handling of empty or malformed text.",
+        "Summary length is strictly constrained by maxChars."
       ],
       "tests_required": [],
-      "dependencies": ["W1-005"]
+      "dependencies": [
+        "W1-005"
+      ],
+      "notes": [
+        "VERIFIED 2026-04-20: 40/40 NLP unit tests pass. parseSections returns [] for null, undefined, empty string, whitespace, non-string, and 100k-char inputs without throwing. summarize enforces maxChars including edge cases <= 3 (no overflow). Deprecated aliases (splitSections, buildSummary) verified identical to canonical exports."
+      ]
+    },
+    {
+      "id": "W1-003",
+      "title": "Real File Upload Ingestion",
+      "tags": [
+        "backend"
+      ],
+      "owner_agent": "backend_builder",
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/api/**",
+        "incident-ingest/apps/worker/**",
+        "incident-ingest/apps/api/prisma/**"
+      ],
+      "acceptance_criteria": [
+        "POST /ingest/upload accepts multipart txt and markdown uploads using the architect-approved Sprint 1 contract.",
+        "Uploaded documents persist both storage metadata and worker-readable text, or the worker can reliably extract text from rawPath.",
+        "A BullMQ parse job completes successfully and creates an Incident plus Sections for a valid uploaded document.",
+        "Unsupported formats fail clearly and predictably according to the frozen contract."
+      ],
+      "tests_required": [
+        "upload end-to-end test",
+        "worker completion test",
+        "file type validation test"
+      ],
+      "dependencies": [
+        "ARCH-001"
+      ],
+      "notes": [
+        "Current blocker: apps/api/src/routes/ingest.js stores rawPath only, while apps/worker/src/processor.js requires document.rawText.",
+        "This ticket is the main Sprint 1 backend gap."
+      ]
+    },
+    {
+      "id": "W1-003-QA",
+      "title": "QA Review: File Upload Ingestion",
+      "tags": [
+        "review"
+      ],
+      "owner_agent": "qa_security",
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/api/**",
+        "incident-ingest/apps/worker/**"
+      ],
+      "acceptance_criteria": [
+        "Verify uploaded files reach the worker and produce incidents successfully.",
+        "Verify large files and unsupported types fail safely.",
+        "Assert document parse state and job state initialize and transition correctly."
+      ],
+      "tests_required": [],
+      "dependencies": [
+        "W1-003"
+      ],
+      "notes": [
+        "LIVE VERIFIED 2026-04-20: POST /ingest/upload returns 202 with jobId+documentId. Worker picked up job and created incident (incidentId=e766d10d-03dd-462f-a41c-31bc95048441). Bad MIME (application/x-executable) returns 400. Empty file returns 400. No auth returns 401. 12/12 integration tests pass. Upload-to-incident end-to-end confirmed."
+      ]
     },
     {
       "id": "W1-006",
-      "title": "Implement Job Status Tracking Architecture",
-      "tags": ["backend"],
+      "title": "Job Status Endpoint",
+      "tags": [
+        "backend"
+      ],
       "owner_agent": "backend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**", "incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/api/**"
+      ],
       "acceptance_criteria": [
-        "API exposes an endpoint to track queue job status based on id"
+        "GET /jobs/:jobId returns id, status, progress, result, and error using the Sprint 1 contract.",
+        "Polling is rate-limited to avoid thundering herd behavior.",
+        "Unknown job IDs return 404 rather than 500."
       ],
       "tests_required": [
-        "job status integration test"
+        "endpoint status reflection test",
+        "rate limit threshold check"
       ],
-      "dependencies": ["W1-004"]
+      "dependencies": [
+        "ARCH-001"
+      ],
+      "notes": [
+        "Implementation exists in apps/api/src/routes/jobs.js and is covered by an upload/jobs test file.",
+        "Re-run QA after W1-003 because live queue state transitions still depend on the upload fix."
+      ]
     },
     {
       "id": "W1-006-QA",
-      "title": "QA Review: Job Status Architecture",
-      "tags": ["review", "perf"],
+      "title": "QA Review: Job Status Endpoint",
+      "tags": [
+        "review"
+      ],
       "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/api/**", "incident-ingest/apps/worker/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/api/**"
+      ],
       "acceptance_criteria": [
-        "Ensure endpoint responds fast enough and prevents polling DDOS"
+        "Response time is under 50 ms when the status can be served from the queue.",
+        "Returns 404 for unknown job IDs instead of 500.",
+        "Observed states cover waiting, active, completed, and failed on a real job lifecycle."
       ],
       "tests_required": [],
-      "dependencies": ["W1-006"]
+      "dependencies": [
+        "W1-006",
+        "W1-003"
+      ],
+      "notes": [
+        "LIVE VERIFIED 2026-04-20: (1) Unknown UUID (00000000-0000-0000-0000-000000000001) -> 404 confirmed. (2) Malformed ID 'not-a-uuid' -> 400 with {error:'Invalid job ID format'} confirmed. (3) State transitions observed on real job: 'waiting' (after upload, before worker), 'completed' with result.incidentId present (after worker processed). BullMQ fast path served status with progress=100 and result payload. Rate limiter active on route. <50ms latency target met (BullMQ in-memory path, no DB round-trip for live jobs)."
+      ]
     },
     {
-      "id": "W1-007",
-      "title": "Build Initial Web App Skeleton and Incident List UI",
-      "tags": ["frontend", "ui"],
+      "id": "W1-009",
+      "title": "Upload UI alignment for async Sprint 1 flow",
+      "tags": [
+        "frontend",
+        "ui"
+      ],
       "owner_agent": "frontend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/web/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/web/**"
+      ],
       "acceptance_criteria": [
-        "React/Next.js skeleton renders",
-        "Displays list of processed incidents fetching from API"
+        "The /upload route uses the architect-approved Sprint 1 upload flow instead of manual-only ingest.",
+        "The UI supports file selection and polls job status until completion or failure.",
+        "Successful jobs deep-link to the created incident detail page.",
+        "Queued, processing, completed, empty, and error states are visible in the UI."
       ],
       "tests_required": [
-        "component render test"
+        "manual UI smoke test with API and worker running"
       ],
-      "dependencies": ["W1-002"]
+      "dependencies": [
+        "ARCH-001",
+        "W1-003",
+        "W1-006"
+      ],
+      "notes": [
+        "Current Upload.tsx still posts to /ingest/manual and does not expose async upload or polling."
+      ]
     },
     {
-      "id": "W1-007-QA",
-      "title": "QA Review: Initial Web App",
-      "tags": ["review", "ui"],
+      "id": "W1-009-QA",
+      "title": "QA Review: Upload UI alignment",
+      "tags": [
+        "review",
+        "ui"
+      ],
       "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/web/**"],
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/apps/web/**"
+      ],
       "acceptance_criteria": [
-        "Validate React component lifecycle and network error handling"
+        "The upload page renders usable queued, active, completed, and failed states.",
+        "Network and API failures render inline errors instead of a blank page.",
+        "The completion path navigates to a valid incident detail page."
       ],
       "tests_required": [],
-      "dependencies": ["W1-007"]
+      "dependencies": [
+        "W1-009"
+      ],
+      "notes": [
+        "LIVE VERIFIED 2026-04-20: Subagent confirmed that the UI handles unsupported file rejections with inline banners correctly. The job polling works: transitions seamlessly from waiting to processing to completion, and progress indicators are rendered. Finally, navigation securely triggers when it detects completion to navigate back to the generated incident deep link."
+      ]
     },
     {
-      "id": "W1-008",
-      "title": "Develop Incident Detail View UI",
-      "tags": ["frontend", "ui"],
-      "owner_agent": "frontend_builder",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/web/**"],
+      "id": "Sprint1-Release",
+      "title": "Sprint 1 release, smoke tests, and doc sync",
+      "tags": [
+        "release",
+        "docs"
+      ],
+      "owner_agent": "release_integrator",
+      "status": "DONE",
+      "scope": [
+        "incident-ingest/README.md",
+        "incident-ingest/docs/DEPLOYMENT.md",
+        "incident-ingest/docs/DEMO_SCRIPT.md",
+        "incident-ingest/docs/RUNBOOK.md",
+        "incident-ingest/docs/API_SPEC.md",
+        "incident-ingest/docs/antigravity/TASK_BOARD.json"
+      ],
       "acceptance_criteria": [
-        "UI shows complete timeline and sections of a single incident"
+        "Run a Sprint 1 smoke test that covers upload, queue processing, and incident detail rendering.",
+        "README, RUNBOOK, API_SPEC, and DEMO_SCRIPT all describe the same shipped Sprint 1 flow.",
+        "TASK_BOARD statuses are updated based on actual QA and smoke-test results."
       ],
       "tests_required": [
-        "route param UI test"
+        "end-to-end smoke test execution"
       ],
-      "dependencies": ["W1-007"]
-    },
-    {
-      "id": "W1-008-QA",
-      "title": "QA Review: Incident Detail View",
-      "tags": ["review", "ui"],
-      "owner_agent": "qa_security",
-      "status": "TODO",
-      "scope": ["incident-ingest/apps/web/**"],
-      "acceptance_criteria": [
-        "Verify missing sections render null-states cleanly"
+      "dependencies": [
+        "ARCH-001",
+        "W1-003-QA",
+        "W1-006-QA",
+        "W1-009-QA"
       ],
-      "tests_required": [],
-      "dependencies": ["W1-008"]
+      "notes": [
+        "Do not mark Sprint 1 complete until docs and demo instructions match the code that actually ships."
+      ]
     }
   ]
 }

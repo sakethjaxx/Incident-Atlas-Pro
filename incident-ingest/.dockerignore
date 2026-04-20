@@ -1,0 +1,39 @@
+# ── Node / build artifacts ────────────────────────────────────────────────────
+node_modules
+dist
+.next
+coverage
+
+# ── Git / editor ──────────────────────────────────────────────────────────────
+.git
+.gitignore
+.DS_Store
+*.swp
+*.swo
+.vscode/
+
+# ── Environment secrets (never ship into images) ─────────────────────────────
+.env
+.env.*
+apps/**/.env
+apps/**/.env.*
+
+# ── Dev / CI artifacts ────────────────────────────────────────────────────────
+*.md
+!README.md
+docs/
+agents.yaml
+agent_replies.md
+CODEX_TASKS.md
+DEMO_SCRIPT.md
+RUNBOOK.md
+
+# ── Test fixtures / uploads ───────────────────────────────────────────────────
+uploads/
+test-incident.txt
+apps/*/src/tests/
+apps/*/src/__tests__/
+packages/*/src/tests/
+
+# ── Web app (not needed in API or worker images) ──────────────────────────────
+apps/web/

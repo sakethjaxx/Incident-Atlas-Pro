@@ -3,10 +3,15 @@
   "private": true,
   "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "dev": "pnpm -r dev",
+    "dev": "pnpm -r --parallel --stream dev",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "api:migrate": "pnpm --filter @app/api prisma:migrate",
-    "api:generate": "pnpm --filter @app/api prisma:generate"
+    "api:migrate:dev": "pnpm --filter @app/api prisma:migrate:dev",
+    "api:generate": "pnpm --filter @app/api prisma:generate",
+    "worker:dev": "pnpm --filter @app/worker dev",
+    "worker:start": "pnpm --filter @app/worker start",
+    "test": "pnpm -r --stream test",
+    "test:unit": "pnpm --filter @pkg/nlp test:unit && pnpm --filter @app/api test:unit && pnpm --filter @app/worker test:unit"
   }
 }

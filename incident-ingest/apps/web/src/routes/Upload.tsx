@@ -1,106 +1,136 @@
-import { useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import {
-  createManualIncident,
-  type IncidentDetail,
-  type ManualIngestPayload,
-} from "../lib/api";
-
-const EXAMPLE_TEXT = `Impact:
-Checkout flow was completely unavailable for all users in the EU region for 34 minutes. Approximately 12,000 transactions failed.
-
-Timeline:
-13:04 UTC — First alert fired on elevated 5xx rate from the payment service.
-13:08 UTC — On-call engineer acknowledged and started investigation.
-13:19 UTC — Root cause identified as exhausted DB connection pool.
-13:38 UTC — Connection pool limit raised and deploy rolled out. Traffic normalized.
-
-Root Cause:
-A misconfigured Helm chart bumped the replica count of the payment service to 40 without proportionally increasing the PostgreSQL max_connections limit. Each pod held 5 connections, exhausting the pool at peak load.
-
-Fix:
-Increased max_connections from 200 to 400. Added HPA max replica guard and a Terraform policy to gate connection pool changes. Post-incident review scheduled for next Monday.`;
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { uploadFile, getJobStatus, type JobStatus } from "../lib/api";
 
 export default function Upload() {
-  const [title, setTitle] = useState("");
-  const [company, setCompany] = useState("");
-  const [date, setDate] = useState("");
-  const [rawText, setRawText] = useState("");
-  const [success, setSuccess] = useState<IncidentDetail | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  const mutation = useMutation({
-    mutationFn: (payload: ManualIngestPayload) => createManualIncident(payload),
-    onSuccess: (data) => {
-      setSuccess(data);
-      setTitle("");
-      setCompany("");
-      setDate("");
-      setRawText("");
-    },
-  });
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canSubmit = useMemo(
-    () => title.trim().length > 0 && rawText.trim().length > 0,
-    [title, rawText]
-  );
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const selected = e.target.files[0];
+      setFile(selected);
+      setError(null);
+      setJobId(null);
+      setJobStatus(null);
+    }
+  };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const clearFile = () => {
+    setFile(null);
+    setJobId(null);
+    setJobStatus(null);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setSuccess(null);
+    if (!file) return;
 
-    const isoDate = date ? new Date(date).toISOString() : undefined;
-    const payload: ManualIngestPayload = {
-      title: title.trim(),
-      rawText: rawText.trim(),
+    setError(null);
+    setJobStatus(null);
+
+    try {
+      const res = await uploadFile(file);
+      setJobId(res.jobId);
+    } catch (err: any) {
+      setError(err.message || "Upload failed");
+    }
+  };
+
+  // Polling effect
+  useEffect(() => {
+    if (!jobId) return;
+
+    let timeoutId: number;
+    let isCancelled = false;
+
+    const poll = async () => {
+      try {
+        const state = await getJobStatus(jobId);
+        if (isCancelled) return;
+
+        setJobStatus(state);
+
+        if (state.status === "completed") {
+          // If the job succeeded and we got the incident ID, we could navigate
+          // or just show the success banner. We'll wait 1.5s then navigate to it.
+          const incidentId = state.result?.incidentId;
+          if (incidentId) {
+            setTimeout(() => {
+              if (!isCancelled) navigate(`/incidents/${incidentId}`);
+            }, 1000);
+          }
+          return; // done polling
+        }
+
+        if (state.status === "failed") {
+          setError(state.error || state.result?.error || "Job failed during processing.");
+          return; // done polling
+        }
+
+        // continue polling
+        timeoutId = window.setTimeout(poll, 1000);
+      } catch (err: any) {
+        if (!isCancelled) {
+          setError(`Failed to poll job status: ${err.message}`);
+        }
+      }
     };
 
-    if (company.trim()) payload.company = company.trim();
-    if (isoDate) payload.date = isoDate;
+    poll();
 
-    mutation.mutate(payload);
-  };
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [jobId, navigate]);
 
-  const loadExample = () => {
-    setTitle("Payments checkout outage — EU region");
-    setCompany("ExampleCo");
-    setDate("2024-11-15");
-    setRawText(EXAMPLE_TEXT);
-    setSuccess(null);
-    mutation.reset();
-  };
+  const isWorking =
+    jobId !== null &&
+    jobStatus?.status !== "completed" &&
+    jobStatus?.status !== "failed" &&
+    !error;
 
   return (
     <section className="fade-in">
       <div className="page-header">
-        <h1>Manual Upload</h1>
+        <h1>Upload Incident</h1>
         <p>
-          Submit a raw incident report — the API will auto-split it into Impact,
-          Timeline, Root Cause, and Fix sections.
+          Upload an incident report (txt, md) — the pipeline will asynchronously
+          extract Impact, Timeline, Root Cause, and Fix sections.
         </p>
       </div>
 
-      {/* Success banner */}
-      {success && (
+      {/* Success / Redirect banner */}
+      {jobStatus?.status === "completed" && (
         <div className="alert alert-success" id="upload-success" style={{ marginBottom: 18 }}>
           <span>✅</span>
           <div>
-            <strong>Incident created.</strong>{" "}
-            <Link to={`/incidents/${success.id}`} style={{ color: "inherit", fontWeight: 700, textDecoration: "underline" }}>
-              View "{success.title}"
-            </Link>
-            {" "}— {success.sections?.length ?? 0} section{success.sections?.length !== 1 ? "s" : ""} extracted.
+            <strong>Processing complete!</strong>{" "}
+            {jobStatus.result?.incidentId ? (
+              <Link to={`/incidents/${jobStatus.result.incidentId}`} style={{ color: "inherit", fontWeight: 700, textDecoration: "underline" }}>
+                Redirecting to incident...
+              </Link>
+            ) : (
+              "Incident created."
+            )}
           </div>
         </div>
       )}
 
       {/* Error banner */}
-      {mutation.error instanceof Error && (
+      {error && (
         <div className="alert alert-error" id="upload-error" style={{ marginBottom: 18 }}>
           <span>⚠️</span>
           <div>
-            <strong>Upload failed.</strong> {mutation.error.message}
+            <strong>Upload failed.</strong> {error}
           </div>
         </div>
       )}
@@ -108,139 +138,125 @@ export default function Upload() {
       <div className="split-layout">
         {/* Form */}
         <div className="card card-padded">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 20,
-            }}
-          >
-            <h2 style={{ fontSize: "0.9375rem" }}>Incident Details</h2>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              id="load-example-btn"
-              onClick={loadExample}
-              style={{ fontSize: "0.75rem", padding: "5px 12px" }}
-            >
-              Load example
-            </button>
-          </div>
+          <h2 style={{ fontSize: "0.9375rem", marginBottom: 20 }}>Select File</h2>
 
           <form
-            ref={formRef}
             id="upload-form"
             onSubmit={handleSubmit}
             style={{ display: "flex", flexDirection: "column", gap: 18 }}
           >
             <div className="form-group">
-              <label className="form-label" htmlFor="title">
-                Title <span>*</span>
-              </label>
-              <input
-                id="title"
-                className="form-input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder='e.g. "Payments checkout outage — EU region"'
-                required
-                aria-required="true"
-              />
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div className="form-group">
-                <label className="form-label" htmlFor="company">
-                  Company
-                </label>
-                <input
-                  id="company"
-                  className="form-input"
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  placeholder="ExampleCo"
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label" htmlFor="date">
-                  Incident Date
-                </label>
-                <input
-                  id="date"
-                  type="date"
-                  className="form-input"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label" htmlFor="rawText">
-                Raw Incident Text <span>*</span>
-              </label>
-              <p
+              <label
                 style={{
-                  fontSize: "0.75rem",
-                  color: "var(--text-muted)",
-                  marginBottom: 6,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "40px 20px",
+                  border: "2px dashed var(--border)",
+                  borderRadius: "var(--r-lg)",
+                  background: "var(--bg-overlay)",
+                  cursor: isWorking ? "not-allowed" : "pointer",
+                  transition: "border-color 0.2s, background 0.2s",
+                }}
+                className={isWorking ? "disabled" : ""}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (!isWorking) e.currentTarget.style.borderColor = "var(--brand)";
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  if (!isWorking) e.currentTarget.style.borderColor = "var(--border)";
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!isWorking) {
+                    e.currentTarget.style.borderColor = "var(--border)";
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      setFile(e.dataTransfer.files[0]);
+                      setError(null);
+                      setJobId(null);
+                      setJobStatus(null);
+                    }
+                  }
                 }}
               >
-                Use headings like{" "}
-                <code className="inline-code">Impact:</code>,{" "}
-                <code className="inline-code">Timeline:</code>,{" "}
-                <code className="inline-code">Root Cause:</code>,{" "}
-                <code className="inline-code">Fix:</code> to auto-split
-                sections.
-              </p>
-              <textarea
-                id="rawText"
-                className="form-input form-textarea"
-                value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
-                placeholder="Impact:&#10;Describe the customer impact here...&#10;&#10;Timeline:&#10;13:00 — Event A&#10;13:15 — Event B&#10;&#10;Root Cause:&#10;Describe the root cause...&#10;&#10;Fix:&#10;Describe the resolution..."
-                required
-                aria-required="true"
-                rows={12}
-              />
-              {rawText.trim().length > 0 && (
-                <div style={{ fontSize: "0.6875rem", color: "var(--text-muted)", marginTop: 4 }}>
-                  {rawText.trim().split(/\s+/).length} words · {rawText.length} chars
+                <div style={{ fontSize: "2rem", marginBottom: 12 }}>📄</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {file ? file.name : "Click or drag a file to upload"}
                 </div>
-              )}
+                <div style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                  {file
+                    ? `${(file.size / 1024).toFixed(1)} KB`
+                    : "Supports .txt and .md files up to 10MB"}
+                </div>
+                <input
+                  type="file"
+                  id="file-upload"
+                  accept=".txt,.md,text/plain,text/markdown"
+                  style={{ display: "none" }}
+                  onChange={handleFileChange}
+                  ref={fileInputRef}
+                  disabled={isWorking}
+                />
+              </label>
             </div>
+
+            {/* Polling / Job Status Indicator */}
+            {jobId && !error && jobStatus?.status !== "completed" && (
+              <div
+                style={{
+                  padding: 16,
+                  borderRadius: "var(--r-md)",
+                  background: "var(--bg-overlay)",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: "0.8125rem" }}>
+                  <strong style={{ color: "var(--brand)" }}>
+                    {jobStatus?.status === "waiting" && "Waiting in queue..."}
+                    {jobStatus?.status === "active" && "Extracting sections..."}
+                    {(!jobStatus || !jobStatus.status) && "Initializing..."}
+                  </strong>
+                  <span style={{ color: "var(--text-muted)" }}>
+                    {jobStatus?.progress ?? 0}%
+                  </span>
+                </div>
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${jobStatus?.progress ?? 0}%`,
+                      background: "linear-gradient(90deg, var(--brand-from), var(--brand-to))",
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button
                 type="submit"
                 id="submit-btn"
                 className="btn btn-primary"
-                disabled={!canSubmit || mutation.isPending}
+                disabled={!file || isWorking}
               >
-                {mutation.isPending ? (
+                {isWorking ? (
                   <>
                     <div className="spinner" />
-                    Processing…
+                    Uploading...
                   </>
                 ) : (
-                  "⊕ Create Incident"
+                  "⊕ Upload & Parse"
                 )}
               </button>
 
-              {(title || rawText) && !mutation.isPending && (
+              {file && !isWorking && (
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => {
-                    setTitle("");
-                    setCompany("");
-                    setDate("");
-                    setRawText("");
-                    setSuccess(null);
-                    mutation.reset();
-                  }}
+                  onClick={clearFile}
                   style={{ fontSize: "0.8125rem" }}
                 >
                   Clear
@@ -322,9 +338,7 @@ export default function Upload() {
               Automatic crawl from status pages and GitHub issues — coming in
               Sprint 2.
             </p>
-            <div
-              style={{ marginTop: 12 }}
-            >
+            <div style={{ marginTop: 12 }}>
               <input
                 disabled
                 className="form-input"
@@ -332,32 +346,6 @@ export default function Upload() {
                 style={{ opacity: 0.5, cursor: "not-allowed" }}
               />
             </div>
-          </div>
-
-          <div className="card card-padded">
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 10 }}>
-              🔗 API Endpoint
-            </h2>
-            <code
-              style={{
-                display: "block",
-                background: "var(--bg-base)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--r-md)",
-                padding: "10px 12px",
-                fontSize: "0.75rem",
-                color: "var(--brand)",
-                lineHeight: 1.7,
-              }}
-            >
-              POST /ingest/manual<br />
-              {`{`}<br />
-              {"  "}title: string *<br />
-              {"  "}rawText: string *<br />
-              {"  "}company?: string<br />
-              {"  "}date?: ISO-8601<br />
-              {`}`}
-            </code>
           </div>
         </div>
       </div>
