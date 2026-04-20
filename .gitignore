@@ -1,0 +1,19 @@
+# OS/editor artifacts
+.DS_Store
+
+# Local-only planning and AI coordination notes.
+# These files may exist on a developer machine but should not be committed.
+CLAUDE.md
+LINKEDIN_POST.md
+SPRINT_1_PENDING.md
+incident-ingest/CODEX_TASKS.md
+incident-ingest/agent_replies.md
+incident-ingest/agents.yaml
+incident-ingest/docs/ANTIGRAVITY_AGENT_SETUP.md
+incident-ingest/docs/FILE_SCOPE_RULES.md
+incident-ingest/docs/PROJECT_RESOURCE_DOCUMENT.md
+incident-ingest/docs/SPRINT_1_STATUS.md
+incident-ingest/docs/SPRINT_1_SUMMARY.md
+incident-ingest/docs/STEP_BY_STEP_EXECUTION.md
+incident-ingest/docs/TASK_BOARD.template.json
+incident-ingest/docs/antigravity/
