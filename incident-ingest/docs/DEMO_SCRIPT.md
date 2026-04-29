@@ -1,7 +1,7 @@
-# Incident Atlas Pro — Demo Script (Week 1 / Sprint 1 Foundation)
+# Incident Atlas Pro — Demo Script (Sprint 2 Retrieval)
 
-> **Sprint scope:** Ingestion pipeline only (upload → queue → parse → structured incident).  
-> Search, similarity, and knowledge graph are Sprint 2–3 features.
+> **Sprint scope:** Ingestion pipeline, keyword/vector search, similar incidents, and UI integration.  
+> Knowledge graph is a Sprint 3 feature.
 
 ---
 
@@ -18,7 +18,7 @@ Seed file ready: `test-incident.txt` — a short Markdown postmortem with Impact
 
 ---
 
-## The Demo (5 minutes)
+## The Demo (7 minutes)
 
 ### 1. Ingest a raw incident document (2 min)
 
@@ -31,42 +31,41 @@ Seed file ready: `test-incident.txt` — a short Markdown postmortem with Impact
 
 ---
 
-### 2. Show job pipeline (1.5 min)
+### 2. Show job pipeline & embedding generation (1.5 min)
 
 **Action:** The UI polls `/jobs/<jobId>`. Watch the status badge transition:  
 `queued` → `processing` → **`completed`**
 
 **Narrative:**  
-> "In the background, our BullMQ worker picks up the job from Redis, extracts text, and slices it into typed sections—Impact, Timeline, Root Cause, Mitigation—then persists everything to Postgres. The worker has a heartbeat healthcheck so it self-heals if it ever goes zombie."
-
-**Callout:** Point to the terminal with `pnpm --filter @app/worker dev` showing live log lines:  
-```
-[worker] → Processing job <uuid> | documentId=<uuid>
-[worker:health] Heartbeat writing to /tmp/worker-heartbeat.json every 10s
-[worker] ✓ Job <uuid> done | incidentId=<uuid>
-```
+> "In the background, our BullMQ worker extracts text, slices it into typed sections, and seamlessly generates vector embeddings via pgvector. The worker has a heartbeat healthcheck so it self-heals if it ever goes zombie."
 
 ---
 
-### 3. View the structured incident (1.5 min)
+### 3. Search and Evidence Retrieval (2 min)
 
-**Action:** Click through to the **Incident Detail** view for the newly created incident.
+**Action:** Navigate to the **Search** page. Type a query like "database pool" and execute.
 
 **Narrative:**  
-> "The raw blob is now a structured record. You can see the extracted sections highlighted independently. This is the data foundation that Sprint 2's hybrid search and Sprint 3's knowledge graph will build on."
+> "Now let's see Sprint 2's hybrid search in action. We query both exact keywords and semantic meaning. The results show not just the incident, but highlighted evidence snippets pointing directly to the sections that matched."
 
-**Callout:** Show the `sections` array in the API response:  
-```bash
-curl http://localhost:3001/incidents/<incidentId> | jq '.sections[].type'
-# → "impact" "rootcause" "fix"
-```
+**Watch:** Search results render with score badges and evidence snippets below the incident title.
 
 ---
 
-## Sprint 1 Done. What's Next?
+### 4. Similar Incidents & Deep Dive (1.5 min)
+
+**Action:** Click on an incident to view its detail page. Scroll down to the **Similar Incidents** panel.
+
+**Narrative:**  
+> "When diagnosing an ongoing outage, you want to know if it's happened before. Incident Atlas automatically calculates vector similarity to past incidents and provides human-readable 'reasons' for why they match."
+
+**Watch:** Similar incident cards load with scores and reasons.
+
+---
+
+## Sprint 2 Done. What's Next?
 
 | Sprint | Upcoming Feature |
 |---|---|
-| 2 | Embeddings + vector store + hybrid search (FTS + pgvector) |
-| 3 | Similar incidents panel with reasons |
-| 4 | Knowledge graph explorer + eval harness |
+| 3 | Entity extraction, graph APIs, and graph explorer UI |
+| 4 | Evaluation harness, citations-first Q&A, auth |

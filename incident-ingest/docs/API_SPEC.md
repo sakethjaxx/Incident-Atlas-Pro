@@ -120,14 +120,46 @@ Errors:
 
 ---
 
-## Sprint 2 Preview (not yet implemented)
+## Sprint 2 — Retrieval (Search & Similarity)
 
+### Search
 ```
 GET /search?q=<text>&limit=<n>
   Hybrid FTS + vector similarity search across incident titles and section text.
 
+→ 200 {
+    "results": [
+      {
+        "incident": { "id": "<uuid>", "title": "<string>", "severity": "<string>", "date": "<iso8601>" },
+        "score": 0.89,
+        "evidence": [
+          { "id": "<uuid>", "type": "rootcause", "text": "<matched snippet>" }
+        ]
+      }
+    ]
+  }
+
+Errors:
+  400  Missing or malformed query
+```
+
+### Similar Incidents
+```
 GET /incidents/:id/similar
-  Returns top-N similar incidents by embedding cosine distance.
+  Returns top-N similar incidents by embedding cosine distance on `summary_embedding`.
+
+→ 200 {
+    "similar": [
+      {
+        "incident": { "id": "<uuid>", "title": "<string>", "severity": "<string>", "date": "<iso8601>" },
+        "score": 0.95,
+        "reason": "<string, e.g., 'Matches strongly on root cause similarity'>"
+      }
+    ]
+  }
+
+Errors:
+  404  Incident not found
 ```
 
 ---

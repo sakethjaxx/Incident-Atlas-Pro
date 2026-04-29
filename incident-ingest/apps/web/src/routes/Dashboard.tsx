@@ -4,10 +4,10 @@ import { getIncidents, type Incident } from "../lib/api";
 
 function getSeverityClass(severity: string | null) {
   if (!severity) return "sev-unknown";
-  const s = severity.toLowerCase();
-  if (s.includes("1") || s.includes("critical")) return "sev-1";
-  if (s.includes("2") || s.includes("high")) return "sev-2";
-  if (s.includes("3") || s.includes("med")) return "sev-3";
+  const value = severity.toLowerCase();
+  if (value.includes("1") || value.includes("critical")) return "sev-1";
+  if (value.includes("2") || value.includes("high")) return "sev-2";
+  if (value.includes("3") || value.includes("med")) return "sev-3";
   return "sev-4";
 }
 
@@ -18,46 +18,45 @@ export default function Dashboard() {
   });
 
   const total = data.length;
-  const withSections = data.filter((i) => i.summaryText).length;
-  const companies = new Set(data.map((i) => i.company).filter(Boolean)).size;
+  const withSummaries = data.filter((incident) => incident.summaryText).length;
+  const companies = new Set(data.map((incident) => incident.company).filter(Boolean)).size;
   const recent = [...data]
-    .filter((i) => i.date)
-    .sort((a, b) => new Date(b.date!).getTime() - new Date(a.date!).getTime())
+    .filter((incident) => incident.date)
+    .sort((left, right) => new Date(right.date!).getTime() - new Date(left.date!).getTime())
     .slice(0, 5);
 
   return (
     <section className="fade-in">
       <div className="page-header">
         <h1>Incident Intelligence Dashboard</h1>
-        <p>Overview of ingested incidents, section coverage, and quick access to all major features.</p>
+        <p>Recent incidents, retrieval coverage, and direct access to Sprint 2 flows.</p>
       </div>
 
-      {/* Stat ribbon */}
       <div className="stats-grid">
         {[
           {
             label: "Total Incidents",
-            value: isLoading ? "—" : total,
-            sub: "ingested documents",
-            icon: "📋",
+            value: isLoading ? "--" : total,
+            sub: "indexed records",
+            icon: "#",
           },
           {
             label: "With Summaries",
-            value: isLoading ? "—" : withSections,
-            sub: `${total ? Math.round((withSections / total) * 100) : 0}% coverage`,
-            icon: "📝",
+            value: isLoading ? "--" : withSummaries,
+            sub: `${total ? Math.round((withSummaries / total) * 100) : 0}% coverage`,
+            icon: "TX",
           },
           {
             label: "Companies",
-            value: isLoading ? "—" : companies,
+            value: isLoading ? "--" : companies,
             sub: "unique sources",
-            icon: "🏢",
+            icon: "CO",
           },
           {
             label: "Sprint",
-            value: "1",
-            sub: "Foundations · Week 1",
-            icon: "🚀",
+            value: "2",
+            sub: "Retrieval and similarity",
+            icon: "S2",
           },
         ].map((stat) => (
           <div key={stat.label} className="card stat-card glow-card">
@@ -72,12 +71,8 @@ export default function Dashboard() {
       </div>
 
       <div className="split-layout">
-        {/* Recent incidents */}
         <div>
-          <div
-            className="card card-padded"
-            style={{ marginBottom: 0 }}
-          >
+          <div className="card card-padded" style={{ marginBottom: 0 }}>
             <div
               style={{
                 display: "flex",
@@ -87,20 +82,25 @@ export default function Dashboard() {
               }}
             >
               <h2 style={{ fontSize: "0.9375rem" }}>Recent Incidents</h2>
-              <Link className="btn btn-secondary" id="view-all-btn" to="/incidents" style={{ fontSize: "0.75rem", padding: "5px 12px" }}>
-                View all →
+              <Link
+                className="btn btn-secondary"
+                id="view-all-btn"
+                to="/incidents"
+                style={{ fontSize: "0.75rem", padding: "5px 12px" }}
+              >
+                View all
               </Link>
             </div>
 
             {isLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[1, 2, 3].map((n) => (
-                  <div key={n} className="skeleton" style={{ height: 58 }} />
+                {[1, 2, 3].map((item) => (
+                  <div key={item} className="skeleton" style={{ height: 58 }} />
                 ))}
               </div>
             ) : recent.length === 0 ? (
               <div className="empty-state" style={{ padding: "40px 0" }}>
-                <div className="empty-state-icon">🗂</div>
+                <div className="empty-state-icon">0</div>
                 <h3>No incidents yet</h3>
                 <p>Use Manual Upload to ingest your first incident report.</p>
                 <Link className="btn btn-primary" to="/upload" style={{ marginTop: 8 }}>
@@ -141,7 +141,7 @@ export default function Dashboard() {
                         )}
                       </div>
                     </div>
-                    <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 12 }}>view</span>
                   </Link>
                 ))}
               </div>
@@ -149,41 +149,38 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Right panel */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Quick links */}
           <div className="card card-padded">
             <h2 style={{ fontSize: "0.9375rem", marginBottom: 14 }}>Quick Actions</h2>
             <div className="quick-links">
+              <Link className="quick-link" to="/search" id="quick-search-link">
+                <span className="quick-link-icon">?</span>
+                Search
+              </Link>
               <Link className="quick-link" to="/upload" id="quick-upload-link">
-                <span className="quick-link-icon">⊕</span>
+                <span className="quick-link-icon">+</span>
                 Upload Report
               </Link>
               <Link className="quick-link" to="/incidents" id="quick-incidents-link">
-                <span className="quick-link-icon">📋</span>
+                <span className="quick-link-icon">#</span>
                 Browse All
               </Link>
-              <div className="quick-link" style={{ opacity: 0.35, cursor: "not-allowed" }} title="Coming in Sprint 2">
-                <span className="quick-link-icon">🔍</span>
-                Search
-              </div>
               <div className="quick-link" style={{ opacity: 0.35, cursor: "not-allowed" }} title="Coming in Sprint 3">
-                <span className="quick-link-icon">🕸</span>
+                <span className="quick-link-icon">@</span>
                 Graph
               </div>
             </div>
           </div>
 
-          {/* Sprint progress */}
           <div className="card card-padded">
             <h2 style={{ fontSize: "0.9375rem", marginBottom: 14 }}>Sprint Progress</h2>
             {[
               { label: "Schema + Migrations", pct: 100, done: true },
-              { label: "Manual Ingest API", pct: 100, done: true },
-              { label: "Section Splitting", pct: 100, done: true },
-              { label: "Incident UI", pct: 80, done: false },
-              { label: "Embeddings + Vector", pct: 0, done: false },
-              { label: "Hybrid Search", pct: 0, done: false },
+              { label: "Embedding Persistence", pct: 100, done: true },
+              { label: "Search API", pct: 100, done: true },
+              { label: "Similarity API", pct: 100, done: true },
+              { label: "Search UI", pct: 90, done: false },
+              { label: "Graph Explorer", pct: 0, done: false },
             ].map((item) => (
               <div key={item.label} style={{ marginBottom: 12 }}>
                 <div
@@ -196,7 +193,7 @@ export default function Dashboard() {
                     fontWeight: item.done ? 600 : 400,
                   }}
                 >
-                  <span>{item.done ? "✓ " : ""}{item.label}</span>
+                  <span>{item.done ? "done " : ""}{item.label}</span>
                   <span style={{ color: "var(--text-muted)" }}>{item.pct}%</span>
                 </div>
                 <div className="progress-bar">
@@ -214,13 +211,12 @@ export default function Dashboard() {
             ))}
           </div>
 
-          {/* Definition of Done */}
           <div className="card card-padded">
             <h2 style={{ fontSize: "0.9375rem", marginBottom: 12 }}>MVP Definition of Done</h2>
             {[
-              { label: "≥30–50 incidents in DB", done: total >= 30 },
-              { label: "Search with evidence sections", done: false },
-              { label: "Similar incidents panel", done: false },
+              { label: "30-50 incidents in DB", done: total >= 30 },
+              { label: "Search with evidence sections", done: true },
+              { label: "Similar incidents panel", done: true },
               { label: "Graph explorer", done: false },
               { label: "Eval harness in CI", done: false },
             ].map((item) => (
@@ -236,7 +232,7 @@ export default function Dashboard() {
                   borderBottom: "1px solid var(--border)",
                 }}
               >
-                <span style={{ fontSize: 12 }}>{item.done ? "✅" : "○"}</span>
+                <span style={{ fontSize: 12 }}>{item.done ? "x" : "o"}</span>
                 {item.label}
               </div>
             ))}

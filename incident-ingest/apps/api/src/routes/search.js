@@ -1,86 +1,87 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
+import { normalizeSearchParams, searchIncidents } from "../lib/retrieval.js";
 
 export const searchRouter = Router();
 
 /**
- * GET /search
- * Keyword search (Postgres ILIKE) over incident title, summaryText, and section text.
+ * GET /search?q=<text>&limit=<n>&page=<n>&company=<s>&severity=<s>&tag=<s>&from=<date>&to=<date>
  *
- * Query params:
- *   q        (string, required)  — search query
- *   from     (ISO date)          — incident date >= from
- *   to       (ISO date)          — incident date <= to
- *   company  (string)            — exact match on company
- *   tag      (string)            — incident must contain this tag
- *   page     (int, default 1)
- *   limit    (int, default 20, max 50)
+ * Hybrid FTS + vector similarity search across incident titles and section text.
  *
- * NOTE: This is a best-effort keyword search (ILIKE).
- * Sprint 2 will upgrade to Postgres FTS (tsvector) + vector similarity + reranking.
+ * Response (frozen API_SPEC contract):
+ *   {
+ *     results: [
+ *       {
+ *         incident: { id, title, severity, date, company, tags, products, summaryText, createdAt },
+ *         score: 0.89,
+ *         evidence: [{ id, type, text, highlight?, score? }]
+ *       }
+ *     ],
+ *     total: <int>,
+ *     page:  <int>,
+ *     limit: <int>,
+ *     q:     <string>,
+ *     filters: { company, severity, tag, from, to }
+ *   }
+ *
+ * Errors:
+ *   400  Missing or malformed query (q is required, must be 1–500 chars)
  */
 searchRouter.get("/search", async (req, res, next) => {
   try {
-    const q = (req.query.q ?? "").trim();
-    if (!q) {
+    const params = normalizeSearchParams(req.query);
+
+    if (!params.q) {
       return res.status(400).json({ error: "q query parameter is required" });
     }
-
-    const page = Math.max(1, parseInt(req.query.page ?? "1", 10) || 1);
-    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit ?? "20", 10) || 20));
-    const skip = (page - 1) * limit;
-
-    // Build date filters
-    const dateFilter = {};
-    if (req.query.from) {
-      const from = new Date(req.query.from);
-      if (!Number.isNaN(from.getTime())) dateFilter.gte = from;
-    }
-    if (req.query.to) {
-      const to = new Date(req.query.to);
-      if (!Number.isNaN(to.getTime())) dateFilter.lte = to;
+    if (params.q.length > 500) {
+      return res.status(400).json({ error: "q must be 500 characters or fewer" });
     }
 
-    const where = {
-      AND: [
-        // Text match across title, summary, and sections
-        {
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            { summaryText: { contains: q, mode: "insensitive" } },
-            {
-              sections: {
-                some: { text: { contains: q, mode: "insensitive" } },
-              },
-            },
-          ],
-        },
-        // Optional filters
-        ...(Object.keys(dateFilter).length ? [{ date: dateFilter }] : []),
-        ...(req.query.company
-          ? [{ company: { equals: req.query.company, mode: "insensitive" } }]
-          : []),
-        ...(req.query.tag ? [{ tags: { has: req.query.tag } }] : []),
-      ],
-    };
+    const result = await searchIncidents(prisma, params);
 
-    const [total, incidents] = await Promise.all([
-      prisma.incident.count({ where }),
-      prisma.incident.findMany({
-        where,
-        include: {
-          sections: {
-            where: { text: { contains: q, mode: "insensitive" } },
-            orderBy: { createdAt: "asc" },
-          },
-        },
-        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-        skip,
-        take: limit,
-      }),
-    ]);
+    // Map internal retrieval shape → frozen API_SPEC contract.
+    // retrieval.js returns items with: incident, score, matchedSections, sections, …
+    // Contract shape: { incident, score, evidence: [{id, type, text, highlight, score}] }
+    const results = (result.data ?? []).map((item) => ({
+      incident: item.incident ?? {
+        id: item.id,
+        title: item.title,
+        date: item.date,
+        company: item.company,
+        severity: item.severity,
+        tags: item.tags ?? [],
+        products: item.products ?? [],
+        summaryText: item.summaryText,
+        createdAt: item.createdAt,
+      },
+      score: item.score,
+      evidence: (item.matchedSections ?? item.sections ?? []).map((s) => ({
+        id: s.id,
+        type: s.type,
+        text: s.text,
+        highlight: s.highlight ?? null,
+        score: s.score ?? null,
+      })),
+    }));
 
-    return res.json({ data: incidents, total, page, limit, q });
+    return res.json({
+      results,
+      // Keep `data` as a backward-compat alias for internal consumers / tests
+      data: results,
+      total: result.total,
+      page: params.page,
+      limit: params.limit,
+      q: params.q,
+      filters: {
+        company: params.filters.company ?? null,
+        severity: params.filters.severity ?? null,
+        tag: params.filters.tag ?? null,
+        from: params.filters.from ? params.filters.from.toISOString() : null,
+        to: params.filters.to ? params.filters.to.toISOString() : null,
+      },
+    });
   } catch (error) {
     return next(error);
   }

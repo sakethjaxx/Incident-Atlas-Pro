@@ -1,7 +1,7 @@
-# Incident Atlas Pro — Runbook (Sprint 1)
+# Incident Atlas Pro — Runbook (Sprint 2)
 
-> **Last updated:** 2026-04-20  
-> **Status:** ✅ Sprint 1 complete and verified — 124 tests passing, all Docker healthchecks green
+> **Last updated:** 2026-04-29  
+> **Status:** ✅ Sprint 2 complete and verified — 137 tests passing, all Docker healthchecks green
 
 ---
 
@@ -77,7 +77,7 @@ Run in order before any merge or deployment:
 ### Step 1 — Unit tests (no DB/Redis required)
 ```bash
 pnpm --filter @pkg/nlp test           # 40 NLP tests
-pnpm --filter @app/worker test        # 29 worker unit tests (health, processor, resolve_text, shutdown)
+pnpm --filter @app/worker test        # 53 worker unit tests (health, processor, resolve_text, shutdown, embeddings)
 pnpm --filter @app/api test:unit      # 2 API health tests
 ```
 **Expected:** all green.
@@ -87,26 +87,16 @@ pnpm --filter @app/api test:unit      # 2 API health tests
 docker compose up -d --wait
 pnpm --filter @app/api test:integration
 ```
-**Expected:** migration smoke + upload/job/incident CRUD tests pass.
+**Expected:** migration smoke + upload/job/incident CRUD + search + similar incident tests pass (82 tests total).
 
-### Step 3 — Manual e2e upload smoke
+### Step 3 — Manual e2e upload & search smoke
 ```bash
 # Terminals A and B
 pnpm --filter @app/api dev
 pnpm --filter @app/worker dev
 
-# Terminal C — upload a test doc
-curl -X POST http://localhost:3001/ingest/upload \
-  -F "file=@test-incident.txt" | jq .
-# → { "jobId": "<uuid>", "documentId": "<uuid>", ... }
-
-# Poll until completed
-curl http://localhost:3001/jobs/<jobId> | jq .
-# → { "status": "completed", "result": { "incidentId": "<uuid>" } }
-
-# Verify incident stored with sections
-curl http://localhost:3001/incidents/<incidentId> | jq .
-# → full incident object with sections[]
+# Run the provided smoke-test script covering upload, jobs, search, and similarity
+bash scripts/smoke-test.sh
 ```
 
 ### Step 4 — Worker healthcheck (Docker only)
@@ -119,17 +109,18 @@ docker inspect --format='{{.State.Health.Status}}' incident_ingest_worker
 
 ---
 
-## Deployment Checklist (Sprint 1) — Verified 2026-04-20
+## Deployment Checklist (Sprint 2) — Verified 2026-04-29
 
 - [x] `docker compose up -d --wait` shows db + redis + worker all **healthy**
-- [x] `pnpm run api:migrate` runs cleanly from a fresh schema
-- [x] Unit tests pass — 40 NLP + 29 worker + 2 API = 71 unit tests green
-- [x] Integration tests pass — 53/53 green
-- [x] Manual upload → job → incident e2e smoke passes (Step 3 above)
+- [x] `pnpm run api:migrate` runs cleanly from a fresh schema and includes pgvector setup
+- [x] Unit tests pass — 40 NLP + 53 worker + 2 API = 95 unit tests green
+- [x] Integration tests pass — 82/82 API tests green
+- [x] Manual upload → job → incident → search → similar e2e smoke passes (`scripts/smoke-test.sh`)
 - [x] `ADMIN_TOKEN` + `VITE_ADMIN_TOKEN` documented in `.env.example` files
 - [x] Rate limits active on `/jobs/:jobId` (express-rate-limit v8, req.ip keygen)
 - [x] Worker heartbeat healthcheck confirmed healthy in Docker
-- [x] `scripts/smoke-test.sh` available for repeatable e2e verification
+- [x] Search capabilities returning correctly scored `results` and `similar` payloads with matched evidence
+
 
 ---
 

@@ -29,6 +29,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { parseSections, summarize } from "@pkg/nlp";
+import { safeIndexIncidentEmbeddings } from "./retrieval.js";
 
 // ── DB client ─────────────────────────────────────────────────────────────────
 
@@ -171,8 +172,10 @@ export async function processParseJob(job) {
         summaryText,
         sections: { create: sections },
       },
-      select: { id: true },
+      include: { sections: true },
     });
+
+    await safeIndexIncidentEmbeddings(prisma, incident);
 
     // ── Stage 4: mark done ──────────────────────────────────────────────
     await prisma.document.update({

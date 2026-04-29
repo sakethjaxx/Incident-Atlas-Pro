@@ -22,6 +22,11 @@ import {
   splitSections,
   buildSummary,
   SECTION_TYPES,
+  EMBEDDING_DIMENSIONS,
+  cosineSimilarity,
+  createEmbedding,
+  formatEmbeddingForSql,
+  tokenizeForRetrieval,
 } from "../index.js";
 
 // ─── normalizeLabel ───────────────────────────────────────────────────────────
@@ -317,5 +322,42 @@ describe("deprecated alias exports", () => {
   it("buildSummary is identical to summarize", () => {
     const text = "First paragraph.\n\nSecond.";
     expect(buildSummary(text)).toBe(summarize(text));
+  });
+});
+
+describe("Sprint 2 retrieval helpers", () => {
+  it("tokenizes useful retrieval terms and drops common stopwords", () => {
+    expect(tokenizeForRetrieval("The database pool was exhausted")).toEqual([
+      "database",
+      "pool",
+      "exhausted",
+    ]);
+  });
+
+  it("creates stable 1536-dimensional embeddings", () => {
+    const first = createEmbedding("database connection pool timeout");
+    const second = createEmbedding("database connection pool timeout");
+
+    expect(first).toHaveLength(EMBEDDING_DIMENSIONS);
+    expect(second).toEqual(first);
+  });
+
+  it("returns null embeddings for empty input", () => {
+    expect(createEmbedding("   ")).toBeNull();
+    expect(formatEmbeddingForSql(null)).toBeNull();
+  });
+
+  it("formats embeddings as pgvector literals", () => {
+    expect(formatEmbeddingForSql([0.1, -0.2, 0])).toBe("[0.1,-0.2,0]");
+  });
+
+  it("assigns higher similarity to related text", () => {
+    const query = createEmbedding("database connection pool timeout");
+    const related = createEmbedding("connection pool exhausted in database service");
+    const unrelated = createEmbedding("certificate rotation completed successfully");
+
+    expect(cosineSimilarity(query, related)).toBeGreaterThan(
+      cosineSimilarity(query, unrelated)
+    );
   });
 });
