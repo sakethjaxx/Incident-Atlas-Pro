@@ -78,10 +78,12 @@ All models are defined in `apps/api/prisma/schema.prisma` and backed by PostgreS
 
 ## Planned Schema Additions
 
-### Sprint 2 — Embeddings & Search
-- `incidents.summary_embedding` — `vector(1536)` pgvector column
-- `sections.embedding` — `vector(1536)` pgvector column
-- Full-text search index on `incidents.title` and `sections.text`
+### Sprint 2 — Embeddings & Search (Frozen)
+- `incidents.summary_embedding` — `vector(1536)` pgvector column (Primary: OpenAI `text-embedding-3-small`. Fallback local model `all-MiniLM-L6-v2` pads dimensions or writes to a secondary column).
+- `sections.embedding` — `vector(1536)` pgvector column.
+- **Evidence Contract:** Searches **must** return matched sections directly as evidence. If a match occurs on the incident summary rather than a specific section, FTS results will highlight FTS text, and Vector results will point to the incident summary.
+- **Backfill/Failures:** If embedding generation fails (network loss or missing API keys), ingestion **MUST NOT** fail. Embeddings remain `NULL`. A backfill cron or CLI script will find records where `embedding IS NULL` and retry safely.
+- **FTS:** Full-text search index on `incidents.title`, `incidents.summary_text`, and `sections.text`.
 
 ### Sprint 3 — Knowledge Graph
 - `graph_nodes(id, node_type[Service|Symptom|Trigger|RootCause|Fix|Runbook], name, attrs_json)`

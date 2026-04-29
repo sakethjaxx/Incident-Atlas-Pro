@@ -23,6 +23,8 @@
  *   is re-exported as an alias so existing callers don't break.
  */
 
+import crypto from "node:crypto";
+
 // ─── Section types ────────────────────────────────────────────────────────────
 
 /** Canonical ordered list of section types. */
@@ -105,6 +107,124 @@ export function summarize(text, maxChars = 280) {
 
 /** @deprecated Use `summarize()`.  Kept for backward-compat with apps/api. */
 export const buildSummary = summarize;
+
+// --- Sprint 2 retrieval helpers -------------------------------------------
+
+export const EMBEDDING_DIMENSIONS = 1536;
+
+const STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "that",
+  "the",
+  "to",
+  "was",
+  "were",
+  "with",
+]);
+
+/**
+ * Tokenize text for deterministic retrieval features.
+ *
+ * @param {string} text
+ * @returns {string[]}
+ */
+export function tokenizeForRetrieval(text) {
+  if (typeof text !== "string" || !text.trim()) return [];
+  const matches = text.toLowerCase().match(/[a-z0-9][a-z0-9_-]{1,}/g) ?? [];
+  return matches.filter((token) => !STOPWORDS.has(token));
+}
+
+function hashUInt32(value) {
+  const digest = crypto.createHash("sha256").update(value).digest();
+  return digest.readUInt32BE(0);
+}
+
+/**
+ * Create a deterministic, normalized 1536-d embedding.
+ *
+ * This is the offline/dev embedding path for Sprint 2. It gives stable vector
+ * behavior with no network dependency and can be replaced by a model-backed
+ * provider later while keeping the DB/search contract unchanged.
+ *
+ * @param {string} text
+ * @param {number} [dimensions=EMBEDDING_DIMENSIONS]
+ * @returns {number[] | null}
+ */
+export function createEmbedding(text, dimensions = EMBEDDING_DIMENSIONS) {
+  const tokens = tokenizeForRetrieval(text);
+  if (tokens.length === 0 || dimensions < 1) return null;
+
+  const counts = new Map();
+  for (const token of tokens) {
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  const vector = new Array(dimensions).fill(0);
+  for (const [token, count] of counts.entries()) {
+    const weight = 1 + Math.log(count);
+    for (let seed = 0; seed < 2; seed += 1) {
+      const index = hashUInt32(`${seed}:${token}`) % dimensions;
+      const sign = hashUInt32(`sign:${seed}:${token}`) % 2 === 0 ? 1 : -1;
+      vector[index] += sign * weight;
+    }
+  }
+
+  const magnitude = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0));
+  if (magnitude === 0) return null;
+  return vector.map((value) => Number((value / magnitude).toFixed(6)));
+}
+
+/**
+ * Convert an embedding array to pgvector's text literal format.
+ *
+ * @param {number[] | null} embedding
+ * @returns {string | null}
+ */
+export function formatEmbeddingForSql(embedding) {
+  if (!Array.isArray(embedding) || embedding.length === 0) return null;
+  return `[${embedding.join(",")}]`;
+}
+
+/**
+ * Cosine similarity for already-normalized or raw vectors.
+ *
+ * @param {number[] | null} left
+ * @param {number[] | null} right
+ * @returns {number}
+ */
+export function cosineSimilarity(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+    return 0;
+  }
+
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (let i = 0; i < left.length; i += 1) {
+    dot += left[i] * right[i];
+    leftNorm += left[i] * left[i];
+    rightNorm += right[i] * right[i];
+  }
+
+  if (leftNorm === 0 || rightNorm === 0) return 0;
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
+}
 
 // ─── parseSections ────────────────────────────────────────────────────────────
 

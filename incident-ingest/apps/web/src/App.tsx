@@ -1,6 +1,7 @@
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Dashboard from "./routes/Dashboard";
+import Search from "./routes/Search";
 import Incidents from "./routes/Incidents";
 import IncidentDetail from "./routes/IncidentDetail";
 import Upload from "./routes/Upload";
@@ -8,16 +9,23 @@ import NotFound from "./routes/NotFound";
 import { getHealth } from "./lib/api";
 
 const NAV_ITEMS = [
-  { to: "/", icon: "⬡", label: "Dashboard", exact: true },
-  { to: "/incidents", icon: "📋", label: "Incidents", exact: false },
-  { to: "/upload", icon: "⊕", label: "Manual Upload", exact: false },
+  { to: "/", icon: "[]", label: "Dashboard", exact: true },
+  { to: "/search", icon: "?", label: "Search", exact: false },
+  { to: "/incidents", icon: "#", label: "Incidents", exact: false },
+  { to: "/upload", icon: "+", label: "Manual Upload", exact: false },
 ];
 
 function Breadcrumb() {
   const location = useLocation();
   const segments = location.pathname.split("/").filter(Boolean);
 
-  if (segments.length === 0) return <span className="topbar-breadcrumb"><span>Dashboard</span></span>;
+  if (segments.length === 0) {
+    return (
+      <span className="topbar-breadcrumb">
+        <span>Dashboard</span>
+      </span>
+    );
+  }
 
   const crumbs: { label: string; path: string }[] = [];
   let acc = "";
@@ -32,10 +40,10 @@ function Breadcrumb() {
 
   return (
     <span className="topbar-breadcrumb">
-      {crumbs.map((c, i) => (
-        <span key={c.path}>
-          {i > 0 && <span style={{ margin: "0 4px", opacity: 0.4 }}>/</span>}
-          <span>{c.label}</span>
+      {crumbs.map((crumb, index) => (
+        <span key={crumb.path}>
+          {index > 0 && <span style={{ margin: "0 4px", opacity: 0.4 }}>/</span>}
+          <span>{crumb.label}</span>
         </span>
       ))}
     </span>
@@ -51,17 +59,16 @@ export default function App() {
   });
 
   const apiStatus = healthLoading
-    ? { label: "Checking…", color: "var(--text-muted)", dot: "var(--text-muted)" }
+    ? { label: "Checking...", color: "var(--text-muted)", dot: "var(--text-muted)" }
     : health?.ok
-    ? { label: "API Live", color: "var(--brand)", dot: "var(--brand)" }
-    : { label: "API Down", color: "var(--danger)", dot: "var(--danger)" };
+      ? { label: "API Live", color: "var(--brand)", dot: "var(--brand)" }
+      : { label: "API Down", color: "var(--danger)", dot: "var(--danger)" };
 
   return (
     <div className="app-shell">
-      {/* Sidebar */}
       <aside className="sidebar">
         <NavLink to="/" className="sidebar-logo" style={{ textDecoration: "none" }}>
-          <div className="sidebar-logo-icon">🗺</div>
+          <div className="sidebar-logo-icon">IA</div>
           <div>
             <div className="sidebar-logo-text">Incident Atlas</div>
             <div className="sidebar-logo-sub">Pro · MVP</div>
@@ -84,18 +91,19 @@ export default function App() {
             </NavLink>
           ))}
 
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>Coming Soon</div>
+          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
+            Coming Soon
+          </div>
 
           {[
-            { icon: "🔍", label: "Search" },
-            { icon: "🕸", label: "Knowledge Graph" },
-            { icon: "💬", label: "Q&A" },
+            { icon: "@", label: "Knowledge Graph" },
+            { icon: "Q", label: "Q&A" },
           ].map((item) => (
             <div
               key={item.label}
               className="nav-item"
               style={{ opacity: 0.4, cursor: "not-allowed" }}
-              title="Coming in Sprint 2–3"
+              title="Coming in Sprint 3-4"
             >
               <span className="nav-item-icon">{item.icon}</span>
               {item.label}
@@ -103,10 +111,9 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">Sprint 1 · Foundation</div>
+        <div className="sidebar-footer">Sprint 2 · Retrieval</div>
       </aside>
 
-      {/* Main content */}
       <div className="main-content">
         <header className="topbar">
           <Breadcrumb />
@@ -134,6 +141,7 @@ export default function App() {
         <main id="main-content" className="page-content fade-in">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/search" element={<Search />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/incidents/:id" element={<IncidentDetail />} />
             <Route path="/upload" element={<Upload />} />

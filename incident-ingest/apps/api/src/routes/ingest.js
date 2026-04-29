@@ -8,6 +8,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { parseSections, summarize } from "@pkg/nlp";
 import { redisConnection, PARSE_QUEUE_NAME } from "../lib/queue.js";
+import { safeIndexIncidentEmbeddings } from "../lib/retrieval.js";
 
 const upload = multer({
   dest: process.env.UPLOAD_DIR || "uploads/",
@@ -193,6 +194,8 @@ ingestRouter.post("/ingest/manual", requireAdmin, async (req, res, next) => {
       },
       include: { sections: true },
     });
+
+    await safeIndexIncidentEmbeddings(prisma, incident);
 
     return res.status(201).json(incident);
   } catch (error) {

@@ -4,9 +4,12 @@ export type SectionType = "impact" | "timeline" | "rootcause" | "fix";
 
 export interface Section {
   id: string;
-  incidentId: string;
+  incidentId?: string;
   type: SectionType;
   text: string;
+  createdAt?: string;
+  score?: number | null;
+  highlight?: string | null;
 }
 
 export interface Incident {
@@ -16,7 +19,9 @@ export interface Incident {
   company: string | null;
   severity: string | null;
   tags: string[];
+  products: string[];
   summaryText: string | null;
+  createdAt?: string;
 }
 
 export interface IncidentDetail extends Incident {
@@ -30,7 +35,6 @@ export interface ManualIngestPayload {
   date?: string;
 }
 
-// Paginated API envelope — GET /incidents returns this shape
 export interface PaginatedResponse<T> {
   data: T[];
   total: number;
@@ -38,27 +42,69 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
-// Sprint 2 — search
+// ── Sprint 2: Search contract (mirrors API_SPEC.md) ──────────────────────────
+
+/** A single evidence snippet attached to a search result. */
+export interface Evidence {
+  id: string;
+  type: SectionType;
+  text: string;
+  highlight?: string | null;
+  score?: number | null;
+}
+
+/** A single search result as returned by GET /search. */
 export interface SearchResult {
   incident: Incident;
   score: number;
-  matchedSections: (Section & { highlight?: string })[];
+  keywordScore?: number;
+  vectorScore?: number;
+  evidence: Evidence[];
 }
 
 export interface SearchParams {
   q: string;
   filterCompany?: string;
   filterSeverity?: string;
+  filterTag?: string;
   page?: number;
+  limit?: number;
 }
 
-// Sprint 2 — similar incidents
-export interface SimilarIncident extends Incident {
-  similarityReason: string;
+/** Full response from GET /search. */
+export interface SearchResponse {
+  results: SearchResult[];
+  total: number;
+  page: number;
+  limit: number;
+  q: string;
+  filters: {
+    company: string | null;
+    severity: string | null;
+    tag: string | null;
+    from: string | null;
+    to: string | null;
+  };
+}
+
+// ── Sprint 2: Similar incidents contract ─────────────────────────────────────
+
+/** A single similar incident as returned by GET /incidents/:id/similar. */
+export interface SimilarIncidentResult {
+  incident: Incident;
   score: number;
+  reason: string;
+  matchedSections: Section[];
 }
 
-// ─── HTTP layer ───────────────────────────────────────────────────────────────
+/** Full response from GET /incidents/:id/similar. */
+export interface SimilarResponse {
+  similar: SimilarIncidentResult[];
+  total: number;
+  limit: number;
+}
+
+// ── Job tracking ─────────────────────────────────────────────────────────────
 
 export interface JobStatus {
   id: string;
@@ -118,15 +164,13 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
 
   const headers: HeadersInit = {};
   if (ADMIN_TOKEN) {
-    headers["Authorization"] = `Bearer ${ADMIN_TOKEN}`;
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
   }
 
   const res = await fetch(`${API_URL}/ingest/upload`, {
     method: "POST",
     body: formData,
     headers,
-    // Note: Do NOT set Content-Type header. The browser automatically sets it
-    // to multipart/form-data with the correct boundary parameter.
   });
 
   if (!res.ok) {
@@ -137,7 +181,7 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
         message = data.error;
       }
     } catch {
-      // Ignore
+      // Ignore JSON parse failure.
     }
     throw new Error(message);
   }
@@ -154,9 +198,6 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
  */
 export function getIncidents(): Promise<Incident[]> {
   return request<PaginatedResponse<Incident>>("/incidents").then((res) => {
-    // Defensive: handle both the paginated envelope AND a bare array
-    // (bare array is returned by the legacy index.js path that some
-    //  test environments may still hit).
     if (Array.isArray(res)) return res as unknown as Incident[];
     if (res && Array.isArray(res.data)) return res.data;
     return [];
@@ -183,22 +224,30 @@ export function getJobStatus(id: string): Promise<JobStatus> {
   return request<JobStatus>(`/jobs/${id}`);
 }
 
-// ─── Sprint 2 stubs (will be wired once API endpoints exist) ─────────────────
-
-/** GET /search?q=… — hybrid keyword+vector search */
-export function searchIncidents(
-  params: SearchParams
-): Promise<SearchResult[]> {
+/**
+ * GET /search?q=…&company=…&severity=…&tag=…&page=…&limit=…
+ * Hybrid FTS + vector search. Returns scored results with evidence snippets.
+ */
+export function searchIncidents(params: SearchParams): Promise<SearchResponse> {
   const qs = new URLSearchParams({ q: params.q });
-  if (params.filterCompany) qs.set("filter_company", params.filterCompany);
-  if (params.filterSeverity) qs.set("filter_severity", params.filterSeverity);
+  if (params.filterCompany) qs.set("company", params.filterCompany);
+  if (params.filterSeverity) qs.set("severity", params.filterSeverity);
+  if (params.filterTag) qs.set("tag", params.filterTag);
   if (params.page) qs.set("page", String(params.page));
-  return request<SearchResult[]>(`/search?${qs.toString()}`);
+  if (params.limit) qs.set("limit", String(params.limit));
+  return request<SearchResponse>(`/search?${qs.toString()}`);
 }
 
-/** GET /incidents/:id/similar — similar incidents with reasons */
-export function getSimilarIncidents(id: string): Promise<SimilarIncident[]> {
-  return request<SimilarIncident[]>(`/incidents/${id}/similar`);
+/**
+ * GET /incidents/:id/similar
+ * Returns top-N similar incidents with reasons and evidence.
+ */
+export function getSimilarIncidents(
+  id: string
+): Promise<SimilarIncidentResult[]> {
+  return request<SimilarResponse>(`/incidents/${id}/similar`).then(
+    (res) => res.similar ?? []
+  );
 }
 
 /** GET /health — API health check */

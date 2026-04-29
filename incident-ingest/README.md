@@ -27,33 +27,32 @@ During incidents, teams lose time searching scattered knowledge across postmorte
 
 ## Current status
 
-**Sprint 1:** ✅ **COMPLETE** — All code shipped, QA verified, 124 tests passing
+**Sprint 1:** ✅ **COMPLETE**
+**Sprint 2:** ✅ **COMPLETE** — Retrieval pipeline (embeddings, keyword/vector search, similar incidents) shipped and verified
 
-### Sprint 1 — All tickets DONE
+### Sprint 2 — All tickets DONE
 
 | Ticket | Title | Status |
 |--------|-------|--------|
-| ARCH-001 | Freeze Sprint 1 contract and align docs | ✅ DONE |
-| W1-003 | Real file upload ingestion (`POST /ingest/upload`) | ✅ DONE |
-| W1-003-QA | QA review: file upload ingestion | ✅ DONE |
-| W1-004 | Async queue worker (BullMQ + Redis) | ✅ DONE |
-| W1-004-QA | QA review: queue worker | ✅ DONE |
-| W1-005 | NLP parsing package (`@pkg/nlp`) | ✅ DONE |
-| W1-005-QA | QA review: NLP package | ✅ DONE |
-| W1-006 | Job status endpoint (`GET /jobs/:jobId`) | ✅ DONE |
-| W1-006-QA | QA review: job status endpoint | ✅ DONE |
-| W1-009 | Upload UI: async file upload with job polling | ✅ DONE |
-| W1-009-QA | QA review: upload UI | ✅ DONE |
-| Sprint1-Release | Smoke tests + doc sync | ✅ DONE |
+| S2-PLAN-001 | Create Sprint 2 plan | ✅ DONE |
+| S2-RES-001 | Research retrieval stack | ✅ DONE |
+| S2-ARCH-001 | Freeze Sprint 2 contract | ✅ DONE |
+| W2-003 | Retrieval foundation (embeddings, pgvector) | ✅ DONE |
+| W2-003-QA | QA review: retrieval foundation | ✅ DONE |
+| W2-004 | Search and similar APIs with scored evidence | ✅ DONE |
+| W2-004-QA | QA review: retrieval APIs | ✅ DONE |
+| W2-005 | Search UI and similar-incident panel integration | ✅ DONE |
+| W2-005-QA | QA review: retrieval UX | ✅ DONE |
+| Sprint2-Release | Smoke tests + doc sync | ✅ DONE |
 
-### Test results (2026-04-20)
+### Test results (2026-04-29)
 
 | Suite | Tests | Result |
 |-------|-------|--------|
 | `@pkg/nlp` | 40 | ✅ all green |
-| `@app/worker` unit | 29 | ✅ all green |
+| `@app/worker` unit | 53 | ✅ all green |
 | `@app/api` unit | 2 | ✅ all green |
-| `@app/api` integration | 53 | ✅ all green |
+| `@app/api` integration | 82 | ✅ all green |
 
 ## Run locally
 

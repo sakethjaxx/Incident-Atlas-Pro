@@ -89,18 +89,21 @@ model IngestJob {
 
 /// A normalized, structured incident record
 model Incident {
-  id          String    @id @default(uuid()) @db.Uuid
-  documentId  String?   @unique @map("document_id") @db.Uuid
-  title       String
-  date        DateTime?
-  company     String?
-  products    String[]  @default([])
-  duration    String?
-  severity    String?
-  tags        String[]  @default([])
-  sourceUrl   String?   @map("source_url")
-  summaryText String?   @map("summary_text")
-  createdAt   DateTime  @default(now()) @map("created_at")
+  id               String                 @id @default(uuid()) @db.Uuid
+  documentId       String?                @unique @map("document_id") @db.Uuid
+  title            String
+  date             DateTime?
+  company          String?
+  products         String[]               @default([])
+  duration         String?
+  severity         String?
+  tags             String[]               @default([])
+  sourceUrl        String?                @map("source_url")
+  summaryText      String?                @map("summary_text")
+  /// pgvector 1536-d embedding of the incident summary + metadata.
+  /// NULL until the embedding pipeline writes it. Sprint 2 addition.
+  summaryEmbedding Unsupported("vector(1536)")?  @map("summary_embedding")
+  createdAt        DateTime               @default(now()) @map("created_at")
 
   document Document?  @relation(fields: [documentId], references: [id])
   sections Section[]
@@ -114,6 +117,9 @@ model Section {
   incidentId String      @map("incident_id") @db.Uuid
   type       SectionType
   text       String
+  /// pgvector 1536-d embedding of this section.
+  /// NULL until the embedding pipeline writes it. Sprint 2 addition.
+  embedding  Unsupported("vector(1536)")?
   createdAt  DateTime    @default(now()) @map("created_at")
 
   incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
