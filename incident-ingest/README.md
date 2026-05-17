@@ -160,6 +160,7 @@ The script verifies upload/job health from the existing smoke path, then creates
 ## Project docs
 
 - [Project plan](./docs/PROJECT_PLAN.md)
+- [Project documentation](./docs/PROJECT_DOCUMENTATION.md)
 - [Project spec](./docs/PROJECT_SPEC.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [API spec](./docs/API_SPEC.md)
