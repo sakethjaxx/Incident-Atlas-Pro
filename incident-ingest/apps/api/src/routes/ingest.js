@@ -6,9 +6,12 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { prisma } from "../lib/prisma.js";
 import { requireAdmin } from "../middleware/auth.js";
+import { adminIngestLimiter } from "../middleware/rateLimit.js";
 import { parseSections, summarize } from "@pkg/nlp";
+
 import { redisConnection, PARSE_QUEUE_NAME } from "../lib/queue.js";
 import { safeIndexIncidentEmbeddings } from "../lib/retrieval.js";
+import { safeIndexIncidentGraph } from "../lib/graph.js";
 
 const upload = multer({
   dest: process.env.UPLOAD_DIR || "uploads/",
@@ -49,6 +52,7 @@ function getParseQueue() {
 ingestRouter.post(
   "/ingest/upload",
   requireAdmin,
+  adminIngestLimiter,
   (req, res, next) => {
     upload.single("file")(req, res, (err) => {
       if (err) {
@@ -156,7 +160,8 @@ ingestRouter.post(
  * Body: { title: string, rawText: string, company?: string, date?: string,
  *         severity?: string, tags?: string[], sourceUrl?: string, products?: string[] }
  */
-ingestRouter.post("/ingest/manual", requireAdmin, async (req, res, next) => {
+ingestRouter.post("/ingest/manual", requireAdmin, adminIngestLimiter, async (req, res, next) => {
+
   try {
     const { title, rawText, company, date, severity, tags, sourceUrl, products } =
       req.body ?? {};
@@ -197,6 +202,10 @@ ingestRouter.post("/ingest/manual", requireAdmin, async (req, res, next) => {
 
     await safeIndexIncidentEmbeddings(prisma, incident);
 
+    // Sprint 3: extract graph entities after embeddings.
+    // Failure must not block the response.
+    await safeIndexIncidentGraph(prisma, incident);
+
     return res.status(201).json(incident);
   } catch (error) {
     return next(error);
@@ -213,6 +222,7 @@ ingestRouter.post("/ingest/manual", requireAdmin, async (req, res, next) => {
 ingestRouter.post(
   "/ingest/:documentId",
   requireAdmin,
+  adminIngestLimiter,
   async (req, res, next) => {
     try {
       const { documentId } = req.params;

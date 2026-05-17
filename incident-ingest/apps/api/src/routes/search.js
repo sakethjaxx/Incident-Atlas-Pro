@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { normalizeSearchParams, searchIncidents } from "../lib/retrieval.js";
+import { requireRead } from "../middleware/auth.js";
+import { publicReadLimiter } from "../middleware/rateLimit.js";
+
 
 export const searchRouter = Router();
 
@@ -28,7 +31,8 @@ export const searchRouter = Router();
  * Errors:
  *   400  Missing or malformed query (q is required, must be 1–500 chars)
  */
-searchRouter.get("/search", async (req, res, next) => {
+searchRouter.get("/search", requireRead, publicReadLimiter, async (req, res, next) => {
+
   try {
     const params = normalizeSearchParams(req.query);
 

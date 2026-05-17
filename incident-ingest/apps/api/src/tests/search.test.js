@@ -40,9 +40,12 @@ async function seedIncident(overrides = {}) {
 }
 
 beforeEach(async () => {
+  // Sprint 3: graph_edges must be deleted before sections (RESTRICT FK on evidence_section_id)
+  await prisma.$executeRaw`DELETE FROM "graph_edges"`;
   await prisma.section.deleteMany();
   await prisma.incident.deleteMany();
 });
+
 
 afterAll(async () => {
   await prisma.$disconnect();

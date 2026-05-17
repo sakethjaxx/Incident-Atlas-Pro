@@ -104,6 +104,116 @@ export interface SimilarResponse {
   limit: number;
 }
 
+// ── Sprint 3: Graph contract (mirrors API_SPEC.md) ───────────────────────────
+
+export type GraphNodeType = "service" | "symptom" | "root_cause" | "fix" | string;
+
+/** A graph entity node. */
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: GraphNodeType;
+}
+
+/** A directed, evidence-backed relationship between two graph nodes. */
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+  evidence_section_id: string;
+}
+
+/** A recurring node cluster returned by GET /graph/patterns. */
+export interface GraphPattern {
+  incidentCount: number;
+  nodes: GraphNode[];
+}
+
+/** Full response from GET /graph/patterns. */
+export interface GraphPatternsResponse {
+  patterns: GraphPattern[];
+  page: number;
+  hasMore: boolean;
+}
+
+/** Full response from GET /graph/neighbors. */
+export interface GraphNeighborsResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GraphPatternsParams {
+  service?: string;
+  symptom?: string;
+  page?: number;
+}
+
+// ── Sprint 4: Q&A and Eval contract (mirrors API_SPEC.md) ────────────────────
+
+export interface QaPayload {
+  question: string;
+  filters?: {
+    company?: string;
+    tags?: string[];
+    incidentIds?: string[];
+  };
+  options?: {
+    maxEvidenceSections?: number;
+    includeGraphContext?: boolean;
+    mode?: "answer" | "eval";
+  };
+}
+
+export interface QaCitation {
+  label: string;
+  incidentId: string;
+  sectionId: string;
+  sectionType: string;
+  title: string;
+  company: string | null;
+  date: string | null;
+  excerpt: string;
+  anchor: string;
+  retrievalScore: number;
+}
+
+export interface QaResponse {
+  status: "answered" | "refused";
+  answer: string | null;
+  citations: QaCitation[];
+  refusal?: {
+    reasonCode: "insufficient_evidence" | "unsupported_scope" | "unsafe_prompt" | "citation_validation_failed";
+    message: string;
+  };
+  evidenceCount: number;
+  promptVersion: string;
+  model: {
+    provider: string;
+    name: string;
+    version: string | null;
+  };
+  auditId: string;
+}
+
+export interface EvalLatestResponse {
+  runId: string;
+  status: "passed" | "failed" | "error";
+  mode: "fixture" | "live";
+  querySetVersion: string;
+  createdAt: string;
+  finishedAt: string;
+  gitSha: string | null;
+  retrievalConfig: Record<string, any>;
+  graphConfig: Record<string, any>;
+  promptVersion: string;
+  models: Array<{ provider: string; model: string; version: string | null }>;
+  metrics: Record<string, number | null>;
+  thresholds: Record<string, number>;
+  failures: any[];
+  artifactPath: string;
+}
+
 // ── Job tracking ─────────────────────────────────────────────────────────────
 
 export interface JobStatus {
@@ -253,4 +363,62 @@ export function getSimilarIncidents(
 /** GET /health — API health check */
 export function getHealth(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/health");
+}
+
+/**
+ * GET /graph/patterns?service=…&symptom=…&page=…
+ * Returns recurring node clusters filtered by service or symptom name.
+ */
+export function getGraphPatterns(
+  params: GraphPatternsParams
+): Promise<GraphPatternsResponse> {
+  const qs = new URLSearchParams();
+  if (params.service) qs.set("service", params.service);
+  if (params.symptom) qs.set("symptom", params.symptom);
+  if (params.page) qs.set("page", String(params.page));
+  return request<GraphPatternsResponse>(`/graph/patterns?${qs.toString()}`);
+}
+
+/**
+ * GET /graph/neighbors?node_id=…&depth=…
+ * BFS traversal up to depth hops (max 2). Returns nodes and edges.
+ */
+export function getGraphNeighbors(
+  nodeId: string,
+  depth: 1 | 2 = 1
+): Promise<GraphNeighborsResponse> {
+  return request<GraphNeighborsResponse>(
+    `/graph/neighbors?node_id=${encodeURIComponent(nodeId)}&depth=${depth}`
+  );
+}
+
+/**
+ * POST /qa
+ * Ask a question against the incident corpus.
+ */
+export function postQa(payload: QaPayload): Promise<QaResponse> {
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+
+  return request<QaResponse>("/qa", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /eval/latest
+ * Get the latest evaluation run report.
+ */
+export function getEvalLatest(): Promise<EvalLatestResponse> {
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+  return request<EvalLatestResponse>("/eval/latest", {
+    headers,
+  });
 }

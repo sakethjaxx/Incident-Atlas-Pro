@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireRead } from "../middleware/auth.js";
+import { adminIngestLimiter, publicReadLimiter } from "../middleware/rateLimit.js";
+
 
 export const sourcesRouter = Router();
 
@@ -9,7 +11,8 @@ export const sourcesRouter = Router();
  * Register a new crawl source.
  * Requires admin auth.
  */
-sourcesRouter.post("/sources", requireAdmin, async (req, res, next) => {
+sourcesRouter.post("/sources", requireAdmin, adminIngestLimiter, async (req, res, next) => {
+
   try {
     const { name, url, type, crawlPolicy } = req.body ?? {};
 
@@ -45,7 +48,8 @@ sourcesRouter.post("/sources", requireAdmin, async (req, res, next) => {
  * GET /sources
  * List all registered sources.
  */
-sourcesRouter.get("/sources", async (_req, res, next) => {
+sourcesRouter.get("/sources", requireRead, publicReadLimiter, async (_req, res, next) => {
+
   try {
     const sources = await prisma.source.findMany({
       orderBy: { createdAt: "desc" },

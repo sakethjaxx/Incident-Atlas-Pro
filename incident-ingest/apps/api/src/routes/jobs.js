@@ -1,21 +1,8 @@
 import { Router } from "express";
 import { Queue } from "bullmq";
-import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+import { jobsLimiter } from "../middleware/rateLimit.js";
 import { prisma } from "../lib/prisma.js";
 import { redisConnection, PARSE_QUEUE_NAME } from "../lib/queue.js";
-
-const pollLimiter = rateLimit({
-  windowMs: 1000, // 1 second
-  max: 1, // 1 request per key per second
-  message: { error: "Too many requests, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Include jobId so each (client, job) pair gets its own bucket without
-  // tripping express-rate-limit's IPv6 safety validation.
-  skip: () => false, // always enforce
-  keyGenerator: (req) =>
-    `${ipKeyGenerator(req.ip || "unknown")}:${req.params.jobId ?? ""}`,
-});
 
 export const jobsRouter = Router();
 
@@ -40,7 +27,7 @@ function getQueue() {
  *     document: { id, parseStatus, hash }
  *   }
  */
-jobsRouter.get("/jobs/:jobId", pollLimiter, async (req, res, next) => {
+jobsRouter.get("/jobs/:jobId", jobsLimiter, async (req, res, next) => {
   try {
     const { jobId } = req.params;
 

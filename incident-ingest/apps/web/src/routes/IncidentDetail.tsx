@@ -1,11 +1,25 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   getIncident,
   getSimilarIncidents,
+  getGraphPatterns,
+  getGraphNeighbors,
   type IncidentDetail as IncidentDetailType,
   type SimilarIncidentResult,
 } from "../lib/api";
+
+const NODE_TYPE_COLOR: Record<string, string> = {
+  service: "var(--brand)",
+  symptom: "var(--danger)",
+  root_cause: "var(--warning)",
+  fix: "var(--success)",
+};
+
+function nodeColor(type: string) {
+  return NODE_TYPE_COLOR[type] ?? "var(--text-muted)";
+}
 
 const SECTION_ORDER = ["impact", "timeline", "rootcause", "fix"] as const;
 
@@ -120,6 +134,124 @@ function SimilarIncidentCard({ item }: { item: SimilarIncidentResult }) {
         </div>
       )}
     </Link>
+  );
+}
+
+function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
+  const company = incident.company;
+
+  const sectionMap = useMemo(
+    () => new Map(incident.sections.map((s) => [s.id, s])),
+    [incident.sections]
+  );
+
+  const { data: patternsData, isLoading: patternsLoading } = useQuery({
+    queryKey: ["graph", "patterns", "detail", company],
+    queryFn: () => getGraphPatterns({ service: company! }),
+    enabled: Boolean(company),
+    retry: false,
+  });
+
+  const anchorNode = patternsData?.patterns?.[0]?.nodes?.[0] ?? null;
+
+  const { data: neighborsData, isLoading: neighborsLoading } = useQuery({
+    queryKey: ["graph", "neighbors", anchorNode?.id],
+    queryFn: () => getGraphNeighbors(anchorNode!.id, 1),
+    enabled: Boolean(anchorNode),
+    retry: false,
+  });
+
+  const isLoading = patternsLoading || neighborsLoading;
+  const edges = neighborsData?.edges ?? [];
+  const nodes = neighborsData?.nodes ?? [];
+
+  return (
+    <div className="card card-padded" id="graph-panel">
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: 10,
+        }}
+      >
+        <h2 style={{ fontSize: "0.9375rem" }}>Knowledge Graph</h2>
+        <Link
+          to={
+            company
+              ? `/graph?service=${encodeURIComponent(company)}`
+              : "/graph"
+          }
+          style={{ fontSize: "0.75rem", color: "var(--brand)" }}
+        >
+          Browse all →
+        </Link>
+      </div>
+
+      {isLoading && (
+        <div className="skeleton" style={{ height: 80, borderRadius: 10 }} />
+      )}
+
+      {!isLoading && edges.length === 0 && (
+        <div className="empty-state" style={{ padding: "16px 0" }}>
+          <div className="empty-state-icon">@</div>
+          <p style={{ fontSize: "0.8125rem" }}>
+            No graph data yet — nodes are extracted as incidents are processed.
+          </p>
+        </div>
+      )}
+
+      {edges.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {edges.map((edge) => {
+            const fromNode = nodes.find((n) => n.id === edge.from);
+            const toNode = nodes.find((n) => n.id === edge.to);
+            const section = sectionMap.get(edge.evidence_section_id);
+            return (
+              <div
+                key={edge.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 0",
+                  borderBottom: "1px solid var(--border)",
+                  fontSize: "0.8125rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                {fromNode && (
+                  <span style={{ color: nodeColor(fromNode.type), fontWeight: 500 }}>
+                    {fromNode.name}
+                  </span>
+                )}
+                <span style={{ color: "var(--text-muted)", fontSize: "0.6875rem" }}>
+                  {edge.type}
+                </span>
+                {toNode && (
+                  <span style={{ color: nodeColor(toNode.type), fontWeight: 500 }}>
+                    {toNode.name}
+                  </span>
+                )}
+                {section && (
+                  <a
+                    href={`#section-${section.type}-${section.id}`}
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: "0.6875rem",
+                      color: "var(--brand)",
+                    }}
+                    title={`Evidence: ${section.type}`}
+                  >
+                    [{section.type}] ↑
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -362,10 +494,7 @@ export default function IncidentDetail() {
             </div>
           )}
 
-          <div className="card card-padded" style={{ opacity: 0.6 }}>
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 6 }}>Knowledge Graph</h2>
-            <p style={{ fontSize: "0.8125rem" }}>Graph exploration lands in Sprint 3.</p>
-          </div>
+          <IncidentGraphPanel incident={data} />
         </div>
       </div>
     </div>

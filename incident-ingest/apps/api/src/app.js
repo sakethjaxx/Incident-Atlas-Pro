@@ -8,6 +8,9 @@ import { documentsRouter } from "./routes/documents.js";
 import { ingestRouter } from "./routes/ingest.js";
 import { incidentsRouter } from "./routes/incidents.js";
 import { searchRouter } from "./routes/search.js";
+import { graphRouter } from "./routes/graph.js";
+import { evalRouter } from "./routes/eval.js";
+import { qaRouter } from "./routes/qa.js";
 import { jobsRouter } from "./routes/jobs.js";
 
 // W4-H3: Restrict CORS to a known origin; override via CORS_ORIGIN in production.
@@ -35,6 +38,9 @@ export function buildApp() {
   app.use(ingestRouter);
   app.use(incidentsRouter);
   app.use(searchRouter);
+  app.use(graphRouter);
+  app.use(evalRouter);
+  app.use(qaRouter);
   app.use(jobsRouter);
 
   // 404 handler

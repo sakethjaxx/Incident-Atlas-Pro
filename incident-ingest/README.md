@@ -27,32 +27,36 @@ During incidents, teams lose time searching scattered knowledge across postmorte
 
 ## Current status
 
-**Sprint 1:** ✅ **COMPLETE**
-**Sprint 2:** ✅ **COMPLETE** — Retrieval pipeline (embeddings, keyword/vector search, similar incidents) shipped and verified
+**Sprint 1:** COMPLETE
+**Sprint 2:** COMPLETE - retrieval pipeline shipped and verified
+**Sprint 3:** COMPLETE - graph extraction, graph APIs, and graph UI shipped and smoke-tested
+**Sprint 4:** COMPLETE - evaluation harness, citations-first Q&A, and security/rate limits shipped
 
-### Sprint 2 — All tickets DONE
+### Sprint 4 - All tickets DONE
 
 | Ticket | Title | Status |
 |--------|-------|--------|
-| S2-PLAN-001 | Create Sprint 2 plan | ✅ DONE |
-| S2-RES-001 | Research retrieval stack | ✅ DONE |
-| S2-ARCH-001 | Freeze Sprint 2 contract | ✅ DONE |
-| W2-003 | Retrieval foundation (embeddings, pgvector) | ✅ DONE |
-| W2-003-QA | QA review: retrieval foundation | ✅ DONE |
-| W2-004 | Search and similar APIs with scored evidence | ✅ DONE |
-| W2-004-QA | QA review: retrieval APIs | ✅ DONE |
-| W2-005 | Search UI and similar-incident panel integration | ✅ DONE |
-| W2-005-QA | QA review: retrieval UX | ✅ DONE |
-| Sprint2-Release | Smoke tests + doc sync | ✅ DONE |
+| S4-PLAN-001 | Create Sprint 4 plan | DONE |
+| S4-RES-001 | Research eval metrics and Q&A | DONE |
+| S4-ARCH-001 | Freeze Sprint 4 eval, Q&A, auth contracts | DONE |
+| W4-001 | Evaluation harness and regression gate | DONE |
+| W4-001-QA | QA review: evaluation harness | DONE |
+| W4-002 | Citations-first Q&A API and audit logging | DONE |
+| W4-002-QA | QA review: citations-first Q&A | DONE |
+| W4-003 | Auth, rate limits, and audit hardening | DONE |
+| W4-003-QA | QA review: auth, rate limits, audit | DONE |
+| W4-004 | Q&A UI and eval reports UI | DONE |
+| W4-004-QA | QA review: Q&A UI | DONE |
+| Sprint4-Release | Smoke tests + doc sync | DONE |
 
-### Test results (2026-04-29)
+### Release evidence (2026-05-13)
 
 | Suite | Tests | Result |
 |-------|-------|--------|
-| `@pkg/nlp` | 40 | ✅ all green |
-| `@app/worker` unit | 53 | ✅ all green |
-| `@app/api` unit | 2 | ✅ all green |
-| `@app/api` integration | 82 | ✅ all green |
+| `@pkg/nlp` Sprint 4 QA | 83 | all green |
+| `@app/worker` Sprint 4 QA | 66 | all green |
+| `@app/api` Sprint 4 QA | 146 | all green |
+| `scripts/smoke-test.sh` | e2e Sprint 4 smoke | ingest, retrieval, graph, eval latest, QA citation/refusal path verified |
 
 ## Run locally
 
@@ -101,6 +105,7 @@ Web routes:
 - `/` dashboard
 - `/incidents` incident list
 - `/incidents/:id` incident detail
+- `/graph` knowledge graph patterns browser
 - `/upload` async file upload with job status polling
 
 API endpoints:
@@ -112,6 +117,10 @@ API endpoints:
 - `GET /jobs/:jobId` poll async job status (rate-limited)
 - `GET /incidents` list incidents
 - `GET /incidents/:id` incident with sections
+- `GET /search?q=...` hybrid keyword + vector search
+- `GET /incidents/:id/similar` similar incidents with evidence
+- `GET /graph/patterns?service=...&symptom=...` recurring extracted graph patterns
+- `GET /graph/neighbors?node_id=...&depth=1` adjacent graph nodes and evidence-backed edges
 - `GET /documents` list uploaded documents
 - `GET /sources` list sources
 - `POST /sources` create source (admin auth)
@@ -129,10 +138,23 @@ API endpoints:
 }
 ```
 
+Manual ingest now also runs graph extraction after embeddings. Shipped Sprint 3 graph nodes are `service`, `symptom`, `root_cause`, and `fix`; shipped graph edge types are `AFFECTS`, `HAS_SYMPTOM`, `CAUSED_BY`, and `RESOLVED_BY`. Every graph edge includes `evidence_section_id`, which maps back to an incident detail anchor shaped as `#section-{type}-{sectionId}`.
+
+## Sprint 3 graph smoke
+
+With the API and worker running, the canonical release smoke is:
+
+```bash
+bash scripts/smoke-test.sh
+```
+
+The script verifies upload/job health from the existing smoke path, then creates a deterministic `payment-api` incident through `POST /ingest/manual`, queries `GET /graph/patterns`, traverses `GET /graph/neighbors`, and verifies that at least one graph edge points to a section anchor on the incident detail page.
+
 ## Roadmap
 
-- Sprint 2: keyword search, embeddings, similarity endpoints, and search UI
-- Sprint 3: entity extraction, graph APIs, and graph explorer UI
+- Sprint 1: schema, ingestion, async processing, and web UI - complete
+- Sprint 2: keyword search, embeddings, similarity endpoints, and search UI - complete
+- Sprint 3: entity extraction, graph APIs, and graph explorer UI - complete
 - Sprint 4: eval harness, citations-first Q&A, auth/rate limits, deployable demo
 
 ## Project docs

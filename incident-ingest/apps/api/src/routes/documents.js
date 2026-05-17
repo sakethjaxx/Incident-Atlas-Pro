@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { requireAdmin } from "../middleware/auth.js";
+import { requireAdmin, requireRead } from "../middleware/auth.js";
 import crypto from "crypto";
+import { adminIngestLimiter, publicReadLimiter } from "../middleware/rateLimit.js";
 
 export const documentsRouter = Router();
 
@@ -15,6 +16,7 @@ export const documentsRouter = Router();
 documentsRouter.post(
   "/documents/upload",
   requireAdmin,
+  adminIngestLimiter,
   async (req, res, next) => {
     try {
       const { rawText, sourceId } = req.body ?? {};
@@ -56,7 +58,7 @@ documentsRouter.post(
  * GET /documents/:id
  * Get document status and associated parsed artifacts (incident + sections).
  */
-documentsRouter.get("/documents/:id", async (req, res, next) => {
+documentsRouter.get("/documents/:id", requireRead, publicReadLimiter, async (req, res, next) => {
   try {
     const document = await prisma.document.findUnique({
       where: { id: req.params.id },

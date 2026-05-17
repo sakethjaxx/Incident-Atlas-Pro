@@ -38,12 +38,14 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  // Wipe in dependency order
+  // Wipe in dependency order (Sprint 3: graph_edges before sections due to RESTRICT FK)
+  await prisma.$executeRaw`DELETE FROM "graph_edges"`;
   await prisma.section.deleteMany();
   await prisma.incident.deleteMany();
   await prisma.ingestJob.deleteMany();
   await prisma.document.deleteMany();
 });
+
 
 afterAll(async () => {
   await rm(uploadDir, { recursive: true, force: true });

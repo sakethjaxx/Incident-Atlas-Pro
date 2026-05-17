@@ -1,7 +1,7 @@
-# Incident Atlas Pro — Runbook (Sprint 2)
+# Incident Atlas Pro - Runbook (Sprint 4)
 
-> **Last updated:** 2026-04-29  
-> **Status:** ✅ Sprint 2 complete and verified — 137 tests passing, all Docker healthchecks green
+> **Last updated:** 2026-05-13
+> **Status:** Sprint 4 complete - eval, Q&A, rate limits, and release smoke verified.
 
 ---
 
@@ -58,7 +58,7 @@ pnpm --filter @app/api dev
 # Background worker
 pnpm --filter @app/worker dev
 
-# Web UI (port 3000)
+# Web UI (port 5173)
 pnpm --filter @app/web dev
 ```
 
@@ -74,32 +74,32 @@ docker compose up worker
 
 Run in order before any merge or deployment:
 
-### Step 1 — Unit tests (no DB/Redis required)
+### Step 1 - Unit tests (no DB/Redis required)
 ```bash
-pnpm --filter @pkg/nlp test           # 40 NLP tests
-pnpm --filter @app/worker test        # 53 worker unit tests (health, processor, resolve_text, shutdown, embeddings)
+pnpm --filter @pkg/nlp test
+pnpm --filter @app/worker test
 pnpm --filter @app/api test:unit      # 2 API health tests
 ```
 **Expected:** all green.
 
-### Step 2 — Integration tests (requires running Postgres)
+### Step 2 - Integration tests (requires running Postgres)
 ```bash
 docker compose up -d --wait
 pnpm --filter @app/api test:integration
 ```
-**Expected:** migration smoke + upload/job/incident CRUD + search + similar incident tests pass (82 tests total).
+**Expected:** migration smoke + upload/job/incident CRUD + search + similar incident + graph API + eval/QA API tests pass.
 
-### Step 3 — Manual e2e upload & search smoke
+### Step 3 - Release e2e sprint smoke
 ```bash
 # Terminals A and B
 pnpm --filter @app/api dev
 pnpm --filter @app/worker dev
 
-# Run the provided smoke-test script covering upload, jobs, search, and similarity
+# Verifies upload/jobs/search/similar/graph/eval/QA
 bash scripts/smoke-test.sh
 ```
 
-### Step 4 — Worker healthcheck (Docker only)
+### Step 4 - Worker healthcheck (Docker only)
 ```bash
 docker compose up -d --wait
 # After ~15s start_period the healthcheck kicks in.
@@ -109,17 +109,16 @@ docker inspect --format='{{.State.Health.Status}}' incident_ingest_worker
 
 ---
 
-## Deployment Checklist (Sprint 2) — Verified 2026-04-29
+## Deployment Checklist (Sprint 4) - Verified 2026-05-13
 
 - [x] `docker compose up -d --wait` shows db + redis + worker all **healthy**
-- [x] `pnpm run api:migrate` runs cleanly from a fresh schema and includes pgvector setup
-- [x] Unit tests pass — 40 NLP + 53 worker + 2 API = 95 unit tests green
-- [x] Integration tests pass — 82/82 API tests green
-- [x] Manual upload → job → incident → search → similar e2e smoke passes (`scripts/smoke-test.sh`)
-- [x] `ADMIN_TOKEN` + `VITE_ADMIN_TOKEN` documented in `.env.example` files
-- [x] Rate limits active on `/jobs/:jobId` (express-rate-limit v8, req.ip keygen)
+- [x] `pnpm run api:migrate` runs cleanly from a fresh schema and includes pgvector plus graph/eval schema setup
+- [x] Sprint 4 QA evidence is green: 146 API integration tests, 66 worker tests, and 83 NLP tests
+- [x] Release smoke passes: ingest -> extraction -> eval -> citations-first Q&A verified
+- [x] `ADMIN_TOKEN` + `QA_TOKEN` + `VITE_ADMIN_TOKEN` documented in `.env.example` files
+- [x] Route-specific rate limits active
 - [x] Worker heartbeat healthcheck confirmed healthy in Docker
-- [x] Search capabilities returning correctly scored `results` and `similar` payloads with matched evidence
+- [x] Evaluation reporting and Q&A citation refusal logic confirmed functioning
 
 
 ---

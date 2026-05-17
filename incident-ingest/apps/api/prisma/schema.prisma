@@ -105,11 +105,14 @@ model Incident {
   summaryEmbedding Unsupported("vector(1536)")?  @map("summary_embedding")
   createdAt        DateTime               @default(now()) @map("created_at")
 
-  document Document?  @relation(fields: [documentId], references: [id])
-  sections Section[]
+  document   Document?  @relation(fields: [documentId], references: [id])
+  sections   Section[]
+  /// Sprint 3: graph edges extracted from this incident's sections
+  graphEdges GraphEdge[]
 
   @@map("incidents")
 }
+
 
 /// A typed section (impact / timeline / rootcause / fix) within an incident
 model Section {
@@ -122,8 +125,139 @@ model Section {
   embedding  Unsupported("vector(1536)")?
   createdAt  DateTime    @default(now()) @map("created_at")
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident           Incident    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  /// Back-relation: edges that cite this section as evidence.
+  evidenceEdges      GraphEdge[] @relation("EvidenceSection")
 
   @@map("sections")
   @@index([incidentId])
+}
+
+// ─── Sprint 3: Knowledge Graph ───────────────────────────────────────────────
+
+/// A normalized entity node in the knowledge graph.
+/// UNIQUE(node_type, name) enforces deduplication at the DB layer.
+/// node_type is one of: service | symptom | root_cause | fix
+model GraphNode {
+  id        String    @id @default(uuid()) @db.Uuid
+  nodeType  String    @map("node_type")
+  name      String
+  attrsJson Json?     @map("attrs_json")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  /// Edges leaving this node
+  edgesFrom GraphEdge[] @relation("FromNode")
+  /// Edges arriving at this node
+  edgesTo   GraphEdge[] @relation("ToNode")
+
+  @@unique([nodeType, name])
+  @@index([nodeType])
+  @@map("graph_nodes")
+}
+
+/// A directed, typed relationship between two graph nodes, anchored to an incident
+/// and a mandatory evidence section.
+///
+/// FK cascade behavior:
+///   - incident_id → CASCADE: deleting an incident removes its edges.
+///   - from_node_id / to_node_id → RESTRICT: cannot delete a node while edges exist.
+///   - evidence_section_id → RESTRICT: cannot delete a section while it anchors an edge.
+model GraphEdge {
+  id                String    @id @default(uuid()) @db.Uuid
+  fromNodeId        String    @map("from_node_id") @db.Uuid
+  toNodeId          String    @map("to_node_id") @db.Uuid
+  relType           String    @map("rel_type")
+  incidentId        String    @map("incident_id") @db.Uuid
+  evidenceSectionId String    @map("evidence_section_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  fromNode        GraphNode @relation("FromNode", fields: [fromNodeId], references: [id], onDelete: Restrict)
+  toNode          GraphNode @relation("ToNode", fields: [toNodeId], references: [id], onDelete: Restrict)
+  incident        Incident  @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  evidenceSection Section   @relation("EvidenceSection", fields: [evidenceSectionId], references: [id], onDelete: Restrict)
+
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([incidentId])
+  @@map("graph_edges")
+}
+
+// Sprint 4: Evaluation and audit
+
+model QaQuery {
+  id                   String   @id
+  question             String
+  expectedIncidentIds  String[] @default([]) @map("expected_incident_ids") @db.Uuid
+  expectedSectionIds   String[] @default([]) @map("expected_section_ids") @db.Uuid
+  expectedGraphNodeIds String[] @default([]) @map("expected_graph_node_ids") @db.Uuid
+  queryType            String   @map("query_type")
+  critical             Boolean  @default(false)
+  tags                 String[] @default([])
+  querySetVersion      String   @map("query_set_version")
+  metadataJson         Json?    @map("metadata_json")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@index([querySetVersion])
+  @@index([critical])
+  @@map("qa_queries")
+}
+
+model EvalRun {
+  id                  String    @id @default(uuid()) @db.Uuid
+  status              String
+  mode                String
+  querySetVersion     String    @map("query_set_version")
+  gitSha              String?   @map("git_sha")
+  startedAt           DateTime  @map("started_at")
+  finishedAt          DateTime? @map("finished_at")
+  retrievalConfigJson Json      @map("retrieval_config_json")
+  graphConfigJson     Json      @map("graph_config_json")
+  promptVersion       String?   @map("prompt_version")
+  provider            String?
+  model               String?
+  modelVersion        String?   @map("model_version")
+  modelConfigJson     Json?     @map("model_config_json")
+  thresholdsJson      Json      @map("thresholds_json")
+  metricsJson         Json      @map("metrics_json")
+  failuresJson        Json      @map("failures_json")
+  artifactPath        String    @map("artifact_path")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  @@index([finishedAt])
+  @@index([querySetVersion])
+  @@map("eval_runs")
+}
+
+model AuditLog {
+  id                   String   @id @default(uuid()) @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  requestId            String?  @map("request_id")
+  action               String
+  actorType            String   @map("actor_type")
+  actorHash            String?  @map("actor_hash")
+  ipHash               String?  @map("ip_hash")
+  route                String
+  method               String
+  status               String
+  statusCode           Int      @map("status_code")
+  latencyMs            Int?     @map("latency_ms")
+  promptVersion        String?  @map("prompt_version")
+  promptTemplateHash   String?  @map("prompt_template_hash")
+  provider             String?
+  model                String?
+  modelVersion         String?  @map("model_version")
+  modelConfigJson      Json?    @map("model_config_json")
+  inputHash            String?  @map("input_hash")
+  outputHash           String?  @map("output_hash")
+  retrievedSectionIds  String[] @default([]) @map("retrieved_section_ids") @db.Uuid
+  retrievedIncidentIds String[] @default([]) @map("retrieved_incident_ids") @db.Uuid
+  refusalCode          String?  @map("refusal_code")
+  artifactPath         String?  @map("artifact_path")
+  metadataJson         Json?    @map("metadata_json")
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+  @@index([requestId])
+  @@map("audit_logs")
 }

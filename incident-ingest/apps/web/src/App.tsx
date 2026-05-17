@@ -5,6 +5,9 @@ import Search from "./routes/Search";
 import Incidents from "./routes/Incidents";
 import IncidentDetail from "./routes/IncidentDetail";
 import Upload from "./routes/Upload";
+import Graph from "./routes/Graph";
+import Qa from "./routes/Qa";
+import Eval from "./routes/Eval";
 import NotFound from "./routes/NotFound";
 import { getHealth } from "./lib/api";
 
@@ -12,6 +15,9 @@ const NAV_ITEMS = [
   { to: "/", icon: "[]", label: "Dashboard", exact: true },
   { to: "/search", icon: "?", label: "Search", exact: false },
   { to: "/incidents", icon: "#", label: "Incidents", exact: false },
+  { to: "/graph", icon: "@", label: "Knowledge Graph", exact: false },
+  { to: "/qa", icon: "Q", label: "Q&A", exact: false },
+  { to: "/eval", icon: "V", label: "Evaluations", exact: false },
   { to: "/upload", icon: "+", label: "Manual Upload", exact: false },
 ];
 
@@ -90,28 +96,9 @@ export default function App() {
               {item.label}
             </NavLink>
           ))}
-
-          <div className="sidebar-section-label" style={{ marginTop: 8 }}>
-            Coming Soon
-          </div>
-
-          {[
-            { icon: "@", label: "Knowledge Graph" },
-            { icon: "Q", label: "Q&A" },
-          ].map((item) => (
-            <div
-              key={item.label}
-              className="nav-item"
-              style={{ opacity: 0.4, cursor: "not-allowed" }}
-              title="Coming in Sprint 3-4"
-            >
-              <span className="nav-item-icon">{item.icon}</span>
-              {item.label}
-            </div>
-          ))}
         </nav>
 
-        <div className="sidebar-footer">Sprint 2 · Retrieval</div>
+        <div className="sidebar-footer">Sprint 4 · Evaluation & Q&A</div>
       </aside>
 
       <div className="main-content">
@@ -144,6 +131,9 @@ export default function App() {
             <Route path="/search" element={<Search />} />
             <Route path="/incidents" element={<Incidents />} />
             <Route path="/incidents/:id" element={<IncidentDetail />} />
+            <Route path="/graph" element={<Graph />} />
+            <Route path="/qa" element={<Qa />} />
+            <Route path="/eval" element={<Eval />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="*" element={<NotFound />} />
           </Routes>

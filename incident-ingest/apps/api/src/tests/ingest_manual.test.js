@@ -11,9 +11,13 @@ const app = buildApp();
 const AUTH = { Authorization: "Bearer dev-secret" };
 
 beforeEach(async () => {
+  // Sprint 3: graph_edges must be deleted before sections
+  // (evidence_section_id has RESTRICT FK, sections can't be deleted while edges cite them)
+  await prisma.$executeRaw`DELETE FROM "graph_edges"`;
   await prisma.section.deleteMany();
   await prisma.incident.deleteMany();
 });
+
 
 afterAll(async () => {
   await prisma.$disconnect();

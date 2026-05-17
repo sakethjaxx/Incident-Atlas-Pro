@@ -285,3 +285,16 @@ export function parseSections(rawText) {
 
 /** @deprecated Use `parseSections()`.  Kept for backward-compat with apps/api + apps/worker. */
 export const splitSections = parseSections;
+
+// ─── Sprint 3: Graph extraction ───────────────────────────────────────────────
+
+export {
+  extractGraph,
+  ruleExtractGraph,
+  normalizeNodeName,
+  validateNode,
+  validateEdge,
+  deduplicateNodes,
+  VALID_NODE_TYPES,
+  VALID_REL_TYPES,
+} from "./graphExtract.js";

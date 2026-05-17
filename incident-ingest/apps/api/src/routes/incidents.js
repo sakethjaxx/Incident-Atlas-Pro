@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { findSimilarIncidents } from "../lib/retrieval.js";
+import { requireRead } from "../middleware/auth.js";
+import { publicReadLimiter } from "../middleware/rateLimit.js";
+
 
 export const incidentsRouter = Router();
 
@@ -16,7 +19,8 @@ function isUuid(value) {
  * List incidents with optional pagination.
  * Query: page (1-based), limit (default 20, max 100)
  */
-incidentsRouter.get("/incidents", async (req, res, next) => {
+incidentsRouter.get("/incidents", requireRead, publicReadLimiter, async (req, res, next) => {
+
   try {
     const page = Math.max(1, parseInt(req.query.page ?? "1", 10) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit ?? "20", 10) || 20));
@@ -56,7 +60,8 @@ incidentsRouter.get("/incidents", async (req, res, next) => {
  *   400  Malformed incident ID
  *   404  Incident not found
  */
-incidentsRouter.get("/incidents/:id", async (req, res, next) => {
+incidentsRouter.get("/incidents/:id", requireRead, publicReadLimiter, async (req, res, next) => {
+
   try {
     if (!isUuid(req.params.id)) {
       return res.status(400).json({ error: "Invalid incident ID format" });
@@ -105,7 +110,8 @@ incidentsRouter.get("/incidents/:id", async (req, res, next) => {
  *   400  Malformed incident ID
  *   404  Incident not found
  */
-incidentsRouter.get("/incidents/:id/similar", async (req, res, next) => {
+incidentsRouter.get("/incidents/:id/similar", requireRead, publicReadLimiter, async (req, res, next) => {
+
   try {
     if (!isUuid(req.params.id)) {
       return res.status(400).json({ error: "Invalid incident ID format" });

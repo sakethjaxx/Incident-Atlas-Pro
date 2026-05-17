@@ -7,8 +7,11 @@
     "dev": "node --watch src/worker.js",
     "reindex": "node src/reindex.js",
     "reindex:dry-run": "node src/reindex.js --dry-run",
+    "graph:backfill": "node src/graphBackfill.js",
+    "graph:backfill:dry-run": "node src/graphBackfill.js --dry-run",
     "test": "vitest run src/tests --reporter=verbose",
     "test:unit": "vitest run src/tests/processor.test.js src/tests/resolve_text.test.js src/tests/health.test.js --reporter=verbose"
+
   },
   "dependencies": {
     "@pkg/nlp": "workspace:*",
