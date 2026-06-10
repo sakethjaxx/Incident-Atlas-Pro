@@ -106,12 +106,12 @@ Web routes:
 - `/incidents` incident list
 - `/incidents/:id` incident detail
 - `/graph` knowledge graph patterns browser
-- `/upload` async file upload with job status polling
+- `/upload` async single-file or batch upload with job status polling
 
 API endpoints:
 
 - `GET /health` liveness check
-- `POST /ingest/upload` multipart txt/md upload → enqueue parse job → returns `{ jobId, documentId }`
+- `POST /ingest/upload` multipart txt/md upload(s) -> enqueue one parse job per file -> returns `{ accepted, uploads }`
 - `POST /ingest/manual` synchronous raw text ingest → returns full incident
 - `POST /ingest/:documentId` enqueue job for previously uploaded document
 - `GET /jobs/:jobId` poll async job status (rate-limited)

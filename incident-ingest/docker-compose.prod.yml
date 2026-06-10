@@ -86,6 +86,7 @@ services:
       ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN in .env.prod}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       UPLOAD_DIR: /app/apps/api/uploads
+      MAX_UPLOAD_FILES: ${MAX_UPLOAD_FILES:-20}
     volumes:
       - api_uploads:/app/apps/api/uploads
     healthcheck:

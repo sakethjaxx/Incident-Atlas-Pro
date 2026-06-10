@@ -44,11 +44,24 @@ searchRouter.get("/search", requireRead, publicReadLimiter, async (req, res, nex
     }
 
     const result = await searchIncidents(prisma, params);
+    const debugMode = req.query.debug === "1" || req.query.debug === "true";
 
     // Map internal retrieval shape → frozen API_SPEC contract.
     // retrieval.js returns items with: incident, score, matchedSections, sections, …
     // Contract shape: { incident, score, evidence: [{id, type, text, highlight, score}] }
     const results = (result.data ?? []).map((item) => ({
+      // Debug/eval mode: expose per-backend retrieval scores (additive only).
+      ...(debugMode
+        ? {
+            trace: {
+              backend: "pgvector",
+              keywordScore: item.keywordScore ?? null,
+              vectorScore: item.vectorScore ?? null,
+              fusedScore: item.score ?? null,
+              rerankScore: null,
+            },
+          }
+        : {}),
       incident: item.incident ?? {
         id: item.id,
         title: item.title,

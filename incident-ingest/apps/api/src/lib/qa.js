@@ -1,7 +1,15 @@
-import { tokenizeForRetrieval } from "@pkg/nlp";
-import { searchIncidents } from "./retrieval.js";
+import { tokenizeForRetrieval, getRagConfig } from "@pkg/nlp";
+import { searchIncidents, retrieveChunkEvidence } from "./retrieval.js";
+import {
+  getQaModel,
+  tryOllamaAnswer,
+  QA_PROMPT_VERSION_LOCAL,
+  QA_PROMPT_VERSION_OLLAMA,
+  OLLAMA_CONTEXT_CHUNKS,
+} from "./qaGenerate.js";
 
-export const QA_PROMPT_VERSION = "qa-v1";
+export const QA_PROMPT_VERSION = QA_PROMPT_VERSION_LOCAL;
+/** Legacy constant — the active model now depends on QA_PROVIDER (see getQaModel). */
 export const QA_MODEL = {
   provider: "local",
   name: "extractive-citation-v1",
@@ -36,6 +44,7 @@ export class QaValidationError extends Error {
 
 export async function answerQuestion(client, body) {
   const request = validateQaRequest(body);
+  const config = getRagConfig();
 
   if (hasUnsafePromptText(request.question)) {
     return buildRefusal({
@@ -46,7 +55,7 @@ export async function answerQuestion(client, body) {
     });
   }
 
-  const retrieval = await retrieveEvidence(client, request);
+  const retrieval = await retrieveEvidence(client, request, config);
   const unsafeEvidence = retrieval.evidence.find((item) => hasUnsafePromptText(item.text));
   if (unsafeEvidence) {
     return buildRefusal({
@@ -70,9 +79,50 @@ export async function answerQuestion(client, body) {
     });
   }
 
-  const selectedEvidence = gate.evidence.slice(0, MAX_CITED_SECTIONS);
+  const contextSize =
+    config.qa.provider === "ollama" ? OLLAMA_CONTEXT_CHUNKS : MAX_CITED_SECTIONS;
+  const selectedEvidence = gate.evidence.slice(0, contextSize);
   const citations = selectedEvidence.map((item, index) => toCitation(item, index));
-  const answer = buildExtractiveAnswer(citations);
+
+  // Generation: optional Ollama/Qwen path, deterministic extractive fallback.
+  let answer = null;
+  let model = getQaModel(config);
+  let promptVersion = QA_PROMPT_VERSION_LOCAL;
+  let generationDebug = null;
+
+  if (config.qa.provider === "ollama") {
+    const generated = await tryOllamaAnswer({ question: request.question, citations }, config);
+    if (generated?.insufficient) {
+      return buildRefusal({
+        reasonCode: "insufficient_evidence",
+        message: "I do not have enough cited incident evidence to answer that.",
+        retrievedEvidence: retrieval.evidence,
+        debug: request.mode === "eval" ? { modelDeclaredInsufficient: true } : null,
+      });
+    }
+    if (generated?.answer) {
+      const generatedValidation = validateAnswerCitations(
+        generated.answer,
+        citations,
+        selectedEvidence
+      );
+      if (generatedValidation.ok) {
+        answer = generated.answer;
+        promptVersion = QA_PROMPT_VERSION_OLLAMA;
+      } else {
+        generationDebug = { ollamaRejected: generatedValidation.reason };
+      }
+    }
+    if (!answer) {
+      // Degrade to the deterministic extractive answer — still fully cited.
+      model = { provider: "local", name: "extractive-citation-v1", version: null };
+    }
+  }
+
+  if (!answer) {
+    answer = buildExtractiveAnswer(citations.slice(0, MAX_CITED_SECTIONS));
+  }
+
   const validation = validateAnswerCitations(answer, citations, selectedEvidence);
   if (!validation.ok) {
     return buildRefusal({
@@ -84,7 +134,7 @@ export async function answerQuestion(client, body) {
   }
 
   const sourceIncidents = buildSourceIncidents(selectedEvidence);
-  return {
+  const response = {
     status: "answered",
     answer,
     citations,
@@ -92,8 +142,8 @@ export async function answerQuestion(client, body) {
     evidenceCount: retrieval.evidence.length,
     confidence: calculateConfidence(selectedEvidence),
     sourceIncidents,
-    promptVersion: QA_PROMPT_VERSION,
-    model: QA_MODEL,
+    promptVersion,
+    model,
     audit: {
       action: "qa.answer",
       retrievedSectionIds: selectedEvidence.map((item) => item.sectionId),
@@ -101,6 +151,16 @@ export async function answerQuestion(client, body) {
       refusalCode: null,
     },
   };
+
+  if (request.mode === "eval") {
+    response.debug = {
+      ...(generationDebug ?? {}),
+      retrieval: retrieval.meta ?? { path: "legacy-sections" },
+      retrievalTraces: retrieval.traces ?? null,
+    };
+  }
+
+  return response;
 }
 
 export function validateQaRequest(body) {
@@ -122,7 +182,49 @@ export function validateQaRequest(body) {
   };
 }
 
-export async function retrieveEvidence(client, request) {
+export async function retrieveEvidence(client, request, config = getRagConfig()) {
+  // Sprint 5 path: chunk-level hybrid retrieval (filters → FTS+vector → RRF →
+  // rerank). Falls back to the legacy section-level path when the chunk index
+  // is empty or unavailable, so pre-chunk deployments keep working unchanged.
+  const chunkResult = await retrieveChunkEvidence(client, {
+    q: request.question,
+    filters: {
+      company: request.filters.company,
+      severity: null,
+      tag: request.filters.tags[0] ?? null,
+      incidentIds: request.filters.incidentIds,
+    },
+    limit: Math.max(request.maxEvidenceSections, 8),
+    debug: request.mode === "eval",
+    config,
+  });
+
+  if (chunkResult && chunkResult.evidence.length > 0) {
+    const evidence = chunkResult.evidence.filter((item) =>
+      matchesPostFilters(
+        { id: item.incidentId, company: item.company, tags: item.tags },
+        request.filters
+      )
+    );
+
+    if (evidence.length > 0) {
+      if (request.includeGraphContext) {
+        const incidentIds = [...new Set(evidence.map((item) => item.incidentId))];
+        const graphEvidence = await fetchGraphEvidence(client, incidentIds);
+        evidence.push(...graphEvidence);
+      }
+      return {
+        evidence: dedupeAndRankEvidence(evidence, request.maxEvidenceSections),
+        traces: chunkResult.traces,
+        meta: { path: "chunks", ...chunkResult.meta },
+      };
+    }
+  }
+
+  return retrieveLegacySectionEvidence(client, request);
+}
+
+async function retrieveLegacySectionEvidence(client, request) {
   const searchResult = await searchIncidents(client, {
     q: request.question,
     page: 1,
@@ -157,6 +259,8 @@ export async function retrieveEvidence(client, request) {
 
   return {
     evidence: dedupeAndRankEvidence(evidence, request.maxEvidenceSections),
+    traces: null,
+    meta: { path: "legacy-sections" },
   };
 }
 
@@ -245,6 +349,14 @@ function assessSufficiency(request, evidence) {
     });
   }
 
+  // At least one piece of directly-retrieved evidence (not graph context) must
+  // qualify, or the question is out of scope for the corpus.
+  if (!candidateEvidence.some((item) => !item.fromGraphContext)) {
+    return insufficient("insufficient_evidence", "I do not have enough cited incident evidence to answer that.", {
+      onlyGraphContext: true,
+    });
+  }
+
   const intentEvidence =
     intent.sectionType === null
       ? candidateEvidence
@@ -305,6 +417,13 @@ function validateAnswerCitations(answer, citations, evidence) {
   for (const sentence of sentences) {
     if (!/\[C\d+\]/.test(sentence)) {
       return { ok: false, reason: "uncited_sentence" };
+    }
+  }
+  // Every label used in the answer must refer to a provided evidence block
+  // (guards against generated answers hallucinating citation labels).
+  for (const used of answer.match(/\[C\d+\]/g) ?? []) {
+    if (!labels.has(used.slice(1, -1))) {
+      return { ok: false, reason: "unknown_citation_label" };
     }
   }
   for (const citation of citations) {
@@ -395,13 +514,17 @@ async function fetchGraphEvidence(client, incidentIds) {
 
   return edges
     .filter((edge) => edge.evidenceSection?.incident)
-    .map((edge) =>
-      toEvidenceItem({
+    .map((edge) => ({
+      ...toEvidenceItem({
         incident: edge.evidenceSection.incident,
         section: edge.evidenceSection,
         score: 0.35,
-      })
-    );
+      }),
+      // Graph context may enrich an answer but must never justify one alone
+      // (see assessSufficiency) — otherwise off-topic questions that retrieve
+      // weak candidates inherit "strong" graph evidence and dodge refusal.
+      fromGraphContext: true,
+    }));
 }
 
 function toEvidenceItem({ incident, section, score }) {

@@ -59,7 +59,7 @@ model Document {
   sourceId    String?     @map("source_id") @db.Uuid
   rawPath     String?     @map("raw_path")
   rawText     String?     @map("raw_text")
-  hash        String?
+  hash        String?     @unique
   fetchedAt   DateTime?   @map("fetched_at")
   parseStatus ParseStatus @default(pending) @map("parse_status")
   createdAt   DateTime    @default(now()) @map("created_at")
@@ -109,6 +109,8 @@ model Incident {
   sections   Section[]
   /// Sprint 3: graph edges extracted from this incident's sections
   graphEdges GraphEdge[]
+  /// Sprint 5: retrieval chunks (section + paragraph granularity)
+  chunks     Chunk[]
 
   @@map("incidents")
 }
@@ -128,9 +130,56 @@ model Section {
   incident           Incident    @relation(fields: [incidentId], references: [id], onDelete: Cascade)
   /// Back-relation: edges that cite this section as evidence.
   evidenceEdges      GraphEdge[] @relation("EvidenceSection")
+  /// Sprint 5: retrieval chunks derived from this section.
+  chunks             Chunk[]
 
   @@map("sections")
   @@index([incidentId])
+}
+
+// ─── Sprint 5: Retrieval chunks (open-source RAG stack) ──────────────────────
+
+/// A retrieval chunk: either a whole section ("section") or a paragraph slice
+/// of a long section ("paragraph"). Every chunk keeps exact citation anchors
+/// (incident_id + section_id) and denormalized incident metadata so retrieval
+/// can filter before scoring.
+///
+/// embedding        — pgvector storage at a fixed 1536 dims. Model-native
+///                    vectors (bge-small=384, bge-m3=1024) are L2-normalized
+///                    then zero-padded; cosine distance is unaffected.
+/// tq_codes/…       — EXPERIMENTAL TurboQuant-style compressed representation
+///                    (rotated + scalar-quantized, optional residual sign bits).
+///                    NULL unless TURBOQUANT_ENABLED=true at index time.
+///                    pgvector remains the production retrieval path.
+model Chunk {
+  id                String      @id @default(uuid()) @db.Uuid
+  incidentId        String      @map("incident_id") @db.Uuid
+  sectionId         String      @map("section_id") @db.Uuid
+  sectionType       SectionType @map("section_type")
+  chunkType         String      @default("section") @map("chunk_type")
+  chunkIndex        Int         @default(0) @map("chunk_index")
+  text              String
+  company           String?
+  severity          String?
+  tags              String[]    @default([])
+  products          String[]    @default([])
+  embedding         Unsupported("vector(1536)")?
+  embeddingProvider String?     @map("embedding_provider")
+  embeddingModel    String?     @map("embedding_model")
+  embeddingDim      Int?        @map("embedding_dim")
+  tqCodes           Bytes?      @map("tq_codes")
+  tqResidual        Bytes?      @map("tq_residual")
+  tqMeta            Json?       @map("tq_meta")
+  createdAt         DateTime    @default(now()) @map("created_at")
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  section  Section  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@index([sectionId])
+  @@index([company])
+  @@index([severity])
+  @@map("chunks")
 }
 
 // ─── Sprint 3: Knowledge Graph ───────────────────────────────────────────────

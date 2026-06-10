@@ -12,8 +12,8 @@
  *   8. extractGraph — LLM invalid JSON → fallback
  *   9. extractGraph — empty sections
  *
- * No DB or network required — all LLM calls are blocked by the absence of
- * ANTHROPIC_API_KEY in the test environment, or by mocking the dynamic import.
+ * No DB or network required — LLM calls are disabled by GRAPH_EXTRACTOR=rules
+ * (the default), or pointed at an unreachable local port to test the fallback.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -353,15 +353,15 @@ describe("ruleExtractGraph", () => {
   });
 });
 
-// ── 6. extractGraph — LLM unavailable (no API key) → rule fallback ────────────
+// ── 6. extractGraph — default rules extractor (no LLM configured) ─────────────
 
 describe("extractGraph — LLM fallback path", () => {
   beforeEach(() => {
-    // Ensure ANTHROPIC_API_KEY is absent so tryLlmExtraction returns null
-    delete process.env.ANTHROPIC_API_KEY;
+    // Default GRAPH_EXTRACTOR=rules → tryLlmExtraction returns null, no network
+    delete process.env.GRAPH_EXTRACTOR;
   });
 
-  it("returns { nodes, edges } without throwing when no API key", async () => {
+  it("returns { nodes, edges } without throwing when no LLM is configured", async () => {
     const result = await extractGraph(FIXTURE_SECTIONS, FIXTURE_META);
     expect(result).toHaveProperty("nodes");
     expect(result).toHaveProperty("edges");
@@ -401,18 +401,22 @@ describe("extractGraph — LLM fallback path", () => {
 
 describe("extractGraph — LLM failure → rule fallback", () => {
   beforeEach(() => {
-    // Set a fake API key so tryLlmExtraction attempts the LLM call
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test-fake";
+    // Enable the Ollama extractor but point it at an unreachable local port so
+    // the fetch fails immediately (no real network dependency in tests).
+    process.env.GRAPH_EXTRACTOR = "ollama";
+    process.env.OLLAMA_URL = "http://127.0.0.1:1";
+    process.env.OLLAMA_TIMEOUT_MS = "1500";
   });
 
   afterEach(() => {
-    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.GRAPH_EXTRACTOR;
+    delete process.env.OLLAMA_URL;
+    delete process.env.OLLAMA_TIMEOUT_MS;
     vi.restoreAllMocks();
   });
 
-  it("falls back to rules when LLM throws (module not installed)", async () => {
-    // The @anthropic-ai/sdk module is not installed in this repo.
-    // tryLlmExtraction should catch the import failure and return null.
+  it("falls back to rules when the Ollama endpoint is unreachable", async () => {
+    // tryLlmExtraction should catch the connection failure and return null.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await extractGraph(FIXTURE_SECTIONS, FIXTURE_META);

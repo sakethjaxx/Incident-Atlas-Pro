@@ -88,7 +88,7 @@ Incident Atlas Pro is not just a document upload app. The goal is to build an in
 The system currently has five major capabilities:
 
 1. Ingestion
-   - Accept incident text through upload or manual entry.
+   - Accept incident text through single-file upload, batch upload, or manual entry.
    - Store raw document content.
    - Process text into incident records and sections.
 
@@ -390,30 +390,50 @@ Purpose:
 
 Input:
 
-- Multipart form field: `file`
+- Multipart form field: `file` for legacy single-file uploads
+- Multipart form field: `files` for batch uploads
+- Default batch limit: 20 files per request (`MAX_UPLOAD_FILES`)
+- Size limit: 10 MB per file
 - Best-supported file types today: `.txt` and `.md`
 - PDF is detected and fails clearly because PDF extraction is not implemented yet.
 
 Flow:
 
-1. API receives the uploaded file.
+1. API receives one or more uploaded files.
 2. Auth and rate limits are applied.
-3. File is stored locally under the upload directory.
+3. Each file is stored locally under the upload directory.
 4. For text/markdown files, API reads content into `document.rawText`.
-5. API creates:
+5. For each file, API creates:
    - `documents` row
    - `ingest_jobs` row
-6. API enqueues a BullMQ job.
+6. API enqueues one BullMQ job per document.
 7. API returns:
 
 ```json
 {
+  "accepted": 2,
+  "uploads": [
+    {
+      "fileName": "incident-a.txt",
+      "jobId": "<uuid>",
+      "documentId": "<uuid>",
+      "bullmqJobId": "<string>",
+      "pollUrl": "/jobs/<uuid>"
+    },
+    {
+      "fileName": "incident-b.md",
+      "jobId": "<uuid>",
+      "documentId": "<uuid>",
+      "bullmqJobId": "<string>",
+      "pollUrl": "/jobs/<uuid>"
+    }
+  ],
   "jobId": "<uuid>",
-  "documentId": "<uuid>",
-  "bullmqJobId": "<string>",
-  "pollUrl": "/jobs/<uuid>"
+  "documentId": "<uuid>"
 }
 ```
+
+The top-level `jobId` and `documentId` are included only for single-file compatibility.
 
 8. UI polls:
 
@@ -600,6 +620,30 @@ Why hybrid retrieval:
 - Keyword search is strong for exact service names and error phrases.
 - Vector similarity helps when wording is different but meaning is similar.
 - Combining both makes the product more useful for incident memory.
+
+### Chunk-Level Retrieval (Sprint 5)
+
+Q&A evidence now comes from a dedicated `chunks` index instead of whole
+sections, while `/search` keeps its frozen incident-level contract:
+
+- Each section produces one `section` chunk, plus `paragraph` chunks
+  (~700 chars with 80-char overlap) when the section is long.
+- Every chunk carries exact citation anchors (`incident_id` + `section_id`)
+  and denormalized metadata (company, severity, tags, products) so retrieval
+  filters before scoring.
+- Pipeline: metadata filters → Postgres FTS (top 50) → vector backend
+  (top 50) → Reciprocal Rank Fusion (k=60) → optional rerank (top 40) →
+  5–8 evidence chunks.
+- Vector backend is switchable: `RETRIEVAL_BACKEND=pgvector` (stable baseline,
+  HNSW index), `turboquant` (experimental compressed scan, see
+  `docs/TURBOQUANT_RAG_PLAN.md`), or `hybrid` (both fused).
+- Embeddings are provider-driven (`EMBEDDING_PROVIDER=local|bge|ollama`,
+  open-source models only) and stored zero-padded in fixed `vector(1536)`
+  columns. See `docs/OPEN_SOURCE_RAG_STACK.md`.
+- Debug traces (per-backend rank/score, fused score, rerank score) are exposed
+  via `POST /qa` eval mode and `GET /search?debug=1`.
+- If the chunk index is empty (pre-migration data), Q&A transparently falls
+  back to the legacy section-level retrieval; `pnpm reindex:chunks` backfills.
 
 ### Similar Incidents
 
@@ -974,6 +1018,7 @@ The Q&A API returns `status: "answered"` for successful answers. The smoke scrip
 - PDF extraction is not implemented.
 - No HTML/blog/status-page scraper yet.
 - No scheduled source sync yet.
+- Batch upload exists, but large corpus imports are not resumable yet.
 - No mature deduplication beyond content hash foundations.
 - Upload storage is local, not S3 or object storage.
 
@@ -1095,20 +1140,28 @@ Why:
 
 ### E. Stronger AI Provider Layer
 
-Needed:
+Shipped in Sprint 5 (open-source only — no Anthropic, no OpenAI):
 
-- Provider abstraction for embeddings.
-- Provider abstraction for Q&A generation.
-- Configurable model names.
-- Retry and timeout policy.
-- Cost tracking.
-- Prompt version registry.
-- Output validation.
+- Provider abstraction for embeddings (`EMBEDDING_PROVIDER=local|bge|ollama`,
+  default models `BAAI/bge-small-en-v1.5` / `bge-m3`).
+- Provider abstraction for Q&A generation (`QA_PROVIDER=local|ollama`,
+  Qwen3-4B-Instruct via Ollama) and graph extraction (`GRAPH_EXTRACTOR=rules|ollama`).
+- Reranker interface (`RERANKER_PROVIDER=none|local|bge` with
+  `BAAI/bge-reranker-base` over a TEI endpoint).
+- Configurable model names, timeouts (`OLLAMA_TIMEOUT_MS`), prompt versions
+  (`qa-v1`, `qa-v2-ollama`), and post-generation citation validation.
+- See `docs/OPEN_SOURCE_RAG_STACK.md`.
+
+Still needed:
+
+- Retry policy beyond single-attempt + fallback.
+- Cost/compute tracking dashboards.
+- A formal prompt version registry.
 
 Why:
 
-- Companies may use OpenAI, Anthropic, Azure OpenAI, Bedrock, or local models.
-- The product should not be locked to one provider.
+- The product runs on free, self-hosted open models by design; the same
+  abstraction keeps it from ever being locked to one provider.
 
 ### F. Evaluation And Feedback Loop
 
@@ -1283,4 +1336,3 @@ Incident Atlas Pro currently has the foundation of a useful incident intelligenc
 The most important design decision is evidence-first behavior. Search, graph, and Q&A all point back to exact incident sections. That makes the system more trustworthy than a generic chatbot over documents.
 
 The next stage is company readiness: connectors, permissions, production operations, stronger evals, and a polished demo corpus.
-

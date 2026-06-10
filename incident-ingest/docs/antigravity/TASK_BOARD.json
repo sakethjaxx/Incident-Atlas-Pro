@@ -1,11 +1,11 @@
 {
     "project":  "Incident Atlas Pro",
-    "version":  "v0.11",
-    "updated_at":  "2026-05-17",
+    "version":  "v0.12",
+    "updated_at":  "2026-05-18",
     "assessment":  {
-                       "current_phase":  "Sprint 4 complete",
-                       "overall_status":  "SPRINT_4_COMPLETE",
-                       "current_focus_ticket":  "S5-PLAN-001",
+                       "current_phase":  "Sprint 5 planned — production MVP hardening",
+                       "overall_status":  "SPRINT_5_IN_PROGRESS",
+                       "current_focus_ticket":  "S5-ARCH-001",
                        "repo_findings":  [
                                              "Sprint 2 complete and verified: 137 tests passing, all Docker healthchecks green, hybrid vector+FTS search and similar-incident APIs shipped.",
                                              "Sprint 3 goal: extract structured entities and relationships from incident sections, store as a queryable Postgres graph, expose via /graph/patterns and /graph/neighbors APIs, surface in UI.",
@@ -37,8 +37,9 @@
                                              "Release consolidation VERIFIED 2026-05-17: Docker Postgres/Redis healthy, migrations applied with no pending changes, full API integration suite passed 153/153, and scripts/smoke-test.sh passed after aligning the Q&A status check with the shipped answered/refused contract."
                                          ],
                        "recommended_next_ticket_ids":  [
-                                                           "S5-PLAN-001"
-                                                       ]
+                                                           "S5-ARCH-001"
+                                                       ],
+                       "day1_gate_fixes_landed":  "2026-05-17 — G2 Redis AOF, G3 PDF reject, G4 dedup @unique + migration, G5 Promise.all embed+graph, G6 ADMIN_TOKEN startup guard, G7 DB pool docs"
                    },
     "tickets":  [
                     {
@@ -1582,11 +1583,11 @@
                                      "docs"
                                  ],
                         "owner_agent":  "orchestrator_router",
-                        "status":  "TODO",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-18",
                         "scope":  [
                                       "incident-ingest/docs/SPRINT_5_PLAN.md",
-                                      "incident-ingest/docs/antigravity/TASK_BOARD.json",
-                                      "incident-ingest/agent_replies.md"
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
                                   ],
                         "acceptance_criteria":  [
                                                     "Sprint 5 goal, theme, tickets, owners, dependencies, and QA gates are defined.",
@@ -1600,7 +1601,588 @@
                                              "Sprint4-Release"
                                          ],
                         "notes":  [
-                                      "Proposed Sprint 5 theme: production data expansion and reliability, starting with source connector planning after this repo is cleanly committed."
+                                      "DONE 2026-05-18: docs/SPRINT_5_PLAN.md written. Theme: Production MVP Hardening. 17 tickets covering real embeddings, LLM hardening, MinIO object storage, API container, Pino logging, GitHub Actions CI, contract tests, and NLP quality. Day 1 gate fixes (G2-G7) already landed in code — board updated to reflect. Focus routed to S5-ARCH-001."
+                                  ]
+                    },
+                    {
+                        "id":  "S5-ARCH-001",
+                        "title":  "Freeze Sprint 5 production contracts",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/ARCHITECTURE.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Define embedding provider interface: OPENAI_API_KEY path, OLLAMA_URL path, hash fallback. Document dimension contract (1536 OpenAI/hash, 768 Ollama) and schema handling.",
+                                                    "Define MinIO storage contract: bucket name, key format (uploads/{timestamp}-{filename}), TTL policy, how Document.rawPath changes from local path to S3 key.",
+                                                    "Define API Dockerfile: base image, build steps, healthcheck endpoint (GET /ready).",
+                                                    "Define GET /ready response shape (200 { ready: true } / 503 { ready: false, error }).",
+                                                    "Define Pino log format: required JSON fields per request (requestId, method, url, statusCode, duration, jobId where applicable)."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S5-PLAN-001"
+                                         ],
+                        "notes":  [
+                                      "Source-of-truth contract for all Sprint 5 builder work. No code moves until this is DONE. Unblocks W5-001 through W5-008 in parallel."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-001",
+                        "title":  "Wire real embedding provider (OpenAI + Ollama fallback)",
+                        "tags":  [
+                                     "backend",
+                                     "worker",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/index.js",
+                                      "incident-ingest/packages/nlp/src/embedding.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "createEmbedding(text) calls OpenAI text-embedding-3-small when OPENAI_API_KEY set.",
+                                                    "createEmbedding(text) calls OLLAMA_URL/api/embeddings with nomic-embed-text when OLLAMA_URL set.",
+                                                    "Falls back to hash embedding when neither env var set. Provider order: OpenAI → Ollama → hash.",
+                                                    "EMBEDDING_DIMENSIONS constant exported; value matches provider (1536 OpenAI/hash, 768 Ollama via EMBEDDING_DIMS env).",
+                                                    "Run pnpm worker:reindex to backfill existing incidents after wire-up.",
+                                                    "Rebuild IVFFlat index after backfill completes."
+                                                ],
+                        "tests_required":  [
+                                               "OpenAI path returns 1536-d normalized vector",
+                                               "Ollama path returns embedding from mock server",
+                                               "Hash fallback fires when neither key set",
+                                               "Network error on OpenAI falls through to Ollama then hash",
+                                               "Backfill smoke: reindex runs without throwing, updates at least one row"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "MVP Gate G1. Entire retrieval pipeline (search, similar, Q&A) currently uses SHA-256 hash vectors — not semantic. This is the highest-priority fix. See docs/MVP_PRODUCTION_PLAN.md ML-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-001-QA",
+                        "title":  "QA Review: real embeddings + backfill",
+                        "tags":  [
+                                     "review",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/**",
+                                      "incident-ingest/apps/api/src/lib/retrieval.js",
+                                      "incident-ingest/apps/worker/src/retrieval.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify createEmbedding never throws — always returns array or null.",
+                                                    "Verify EMBEDDING_DIMENSIONS matches column definition in schema.",
+                                                    "Verify backfill is resumable: kill mid-run, restart, completes without duplicate rows.",
+                                                    "Verify IVFFlat index rebuilt after backfill.",
+                                                    "Verify search returns semantically meaningful ordering after real embeddings."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-001"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-002",
+                        "title":  "LLM client singleton + prompt caching + confidence schema",
+                        "tags":  [
+                                     "backend",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Module-level _anthropicClient singleton. No new Anthropic() per call.",
+                                                    "Static extraction rules in STATIC_EXTRACTION_RULES const, passed as system message with cache_control: { type: 'ephemeral' }.",
+                                                    "LLM response schema includes confidence: number on both nodes and edges.",
+                                                    "validateNode/validateEdge filter items with confidence < 0.75.",
+                                                    "NOISE_TERMS check applies only to single-word names (no hyphen, no space).",
+                                                    "extractServiceFromMeta regex matches only hyphenated or camelCase candidates."
+                                                ],
+                        "tests_required":  [
+                                               "Singleton: calling tryLlmExtraction twice uses same client instance",
+                                               "Confidence filter: nodes/edges with confidence < 0.75 dropped",
+                                               "NOISE_TERMS: 'api' dropped as standalone, 'payment-api' passes",
+                                               "extractServiceFromMeta('Production Database Outage') returns null",
+                                               "extractServiceFromMeta('payment-api timeout') returns 'payment-api'"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers ML-2 (confidence), ML-3 (singleton), ML-4 (prompt caching), NLP-2 (NOISE_TERMS), NLP-3 (extractServiceFromMeta). See docs/MVP_PRODUCTION_PLAN.md."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-002-QA",
+                        "title":  "QA Review: LLM extraction quality",
+                        "tags":  [
+                                     "review",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify prompt cache headers present in Anthropic request (cache_control on system block).",
+                                                    "Verify singleton prevents redundant module-load overhead.",
+                                                    "Verify confidence field: extraction with LLM mock returning confidence=0.5 produces no graph output.",
+                                                    "Verify extractServiceFromMeta rejects environment names (Production, AWS, Staging)."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-002"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-003",
+                        "title":  "MinIO object storage + reroute upload off local disk",
+                        "tags":  [
+                                     "backend",
+                                     "worker",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/apps/api/src/lib/storage.js",
+                                      "incident-ingest/apps/api/src/routes/ingest.js",
+                                      "incident-ingest/apps/worker/src/processor.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker-compose.yaml includes minio service with miniodata named volume.",
+                                                    "New apps/api/src/lib/storage.js: uploadToStorage(key, buffer, contentType) and readFromStorage(key) via @aws-sdk/client-s3 with forcePathStyle.",
+                                                    "POST /ingest/upload: reads file into buffer, calls uploadToStorage, stores S3 key as Document.rawPath, deletes multer temp.",
+                                                    "processor.js resolveRawText: rawPath starting with 'uploads/' → readFromStorage. Fallback to rawText for legacy rows.",
+                                                    "Bucket incident-uploads created on startup. MINIO_URL/MINIO_USER/MINIO_PASSWORD env vars documented."
+                                                ],
+                        "tests_required":  [
+                                               "Upload stores file in MinIO, Document.rawPath is S3 key not local path",
+                                               "Worker resolveRawText calls readFromStorage for keys starting with 'uploads/'",
+                                               "Worker resolveRawText falls back to rawText for legacy rows",
+                                               "Multer temp file cleaned up after upload",
+                                               "MinIO unavailable → upload returns 500 with safe error message"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-1. Current multer disk write breaks in multi-container deploy — API and worker don't share filesystem. MinIO is self-hosted S3-compatible, Apache-licensed, zero cost. See docs/MVP_PRODUCTION_PLAN.md DO-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-003-QA",
+                        "title":  "QA Review: object storage and file path correctness",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/lib/storage.js",
+                                      "incident-ingest/apps/api/src/routes/ingest.js",
+                                      "incident-ingest/apps/worker/src/processor.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify rawPath in DB is an S3 key, not a local filesystem path, after upload.",
+                                                    "Verify worker resolves raw text when API and worker in separate containers.",
+                                                    "Verify multer temp directory does not accumulate files after successful uploads.",
+                                                    "Verify upload failure (MinIO down) returns 500 with no internal path info.",
+                                                    "Verify legacy rows (rawText populated) still process correctly in worker."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-003"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-004",
+                        "title":  "API Dockerfile + compose service + /ready readiness probe",
+                        "tags":  [
+                                     "backend",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/Dockerfile",
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/apps/api/src/routes/health.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "apps/api/Dockerfile: node:22-alpine, pnpm install --frozen-lockfile, prisma generate, EXPOSE 3001, HEALTHCHECK on /ready.",
+                                                    "docker-compose.yaml api service: depends on db+redis healthy, restart: unless-stopped, ports 3001:3001.",
+                                                    "GET /ready: prisma.$queryRaw SELECT 1 → 200 { ready: true } on success, 503 { ready: false, error } on DB failure.",
+                                                    "Resource limits added to all services: db (2 CPU/2G), redis (0.5 CPU/256M), worker (2 CPU/1G), api (1 CPU/512M)."
+                                                ],
+                        "tests_required":  [
+                                               "GET /ready returns 200 when DB reachable",
+                                               "GET /ready returns 503 when DB unreachable",
+                                               "GET /health still returns 200 (no regression)"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-2 (API container) and DO-6 (readiness probe). docker-compose.yaml currently has no api service — developers run API manually. See docs/MVP_PRODUCTION_PLAN.md DO-2, DO-4, DO-6."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-004-QA",
+                        "title":  "QA Review: container deployment correctness",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/Dockerfile",
+                                      "incident-ingest/docker-compose.yaml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker compose build api completes without error.",
+                                                    "docker compose up api --wait reaches healthy (readiness probe passes).",
+                                                    "GET /ready returns 503 when DB service stopped.",
+                                                    "Resource limits present for all four services.",
+                                                    "Dockerfile does not copy .env files or secrets into image."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-004"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-005",
+                        "title":  "Pino structured logging (replace console.log throughout)",
+                        "tags":  [
+                                     "backend",
+                                     "worker"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/worker/src/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "pino + pino-http added to api; pino added to worker.",
+                                                    "apps/api/src/lib/logger.js exports logger = pino({ level: process.env.LOG_LEVEL ?? 'info' }).",
+                                                    "apps/api/src/app.js uses pino-http middleware for request logging.",
+                                                    "All console.log/warn/error in apps/api/src/ replaced with logger.",
+                                                    "All console.log/warn/error in apps/worker/src/ replaced with logger.",
+                                                    "Log output is valid JSON. No stack traces in error messages."
+                                                ],
+                        "tests_required":  [
+                                               "logger exports pino instance with correct default level",
+                                               "GET /health request produces pino-http JSON log line",
+                                               "No console.log in apps/api/src/** (except test files)"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-5. console.log used throughout — no log levels, no request IDs, no structured JSON. Impossible to grep specific requests in production. See docs/MVP_PRODUCTION_PLAN.md DO-5."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-005-QA",
+                        "title":  "QA Review: log coverage and no secret leakage",
+                        "tags":  [
+                                     "review",
+                                     "security"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/worker/src/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Every API request produces one JSON log line with method, url, statusCode, responseTime.",
+                                                    "Error responses log at error level with no stack traces or internal file paths.",
+                                                    "Worker job lifecycle logs are JSON and include documentId.",
+                                                    "LOG_LEVEL=warn suppresses info logs.",
+                                                    "No ADMIN_TOKEN value or DATABASE_URL password appears in any log output."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-005"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-006",
+                        "title":  "GitHub Actions CI pipeline",
+                        "tags":  [
+                                     "backend",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/.github/workflows/ci.yml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Workflow triggers on push and pull_request to main and feat/* branches.",
+                                                    "Services: pgvector/pgvector:pg16 with healthcheck, redis:7-alpine with --appendonly yes.",
+                                                    "Steps: checkout, pnpm v9, node v22, install, prisma migrate deploy, all test suites.",
+                                                    "Two pre-existing Redis timeout tests in ingest_upload_jobs.test.js skipped with tracking comment — CI is 0-failure.",
+                                                    "CI passes on clean main branch."
+                                                ],
+                        "tests_required":  [
+                                               "CI workflow file is valid YAML",
+                                               "Full test suite passes in CI environment",
+                                               "0 permanently-failing tests"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-7 and QE-1. No .github/workflows/ exists. OSS contributors get zero automated feedback on PRs. GitHub Actions is free on public repos. See docs/MVP_PRODUCTION_PLAN.md DO-7, QE-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-006-QA",
+                        "title":  "QA Review: CI correctness and coverage",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/.github/workflows/ci.yml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "CI runs on a real PR and passes (or verified via act local runner).",
+                                                    "pgvector extension available in CI Postgres image.",
+                                                    "prisma migrate deploy runs without error in CI.",
+                                                    "2 pre-existing Redis timeout tests skipped — CI shows 0 failures.",
+                                                    "No secrets committed to workflow file."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-006"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-007",
+                        "title":  "API response contract snapshot tests",
+                        "tags":  [
+                                     "backend",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/tests/contracts.test.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Supertest snapshot tests for: GET /search, GET /incidents/:id/similar, GET /graph/patterns, GET /graph/neighbors, POST /qa, GET /eval/latest.",
+                                                    "Each test uses expect(res.body).toMatchObject({ ... }) with exact contract fields from docs/API_SPEC.md.",
+                                                    "Tests run in test:integration suite.",
+                                                    "Failing contract test proves API shape change is detected immediately."
+                                                ],
+                        "tests_required":  [
+                                               "GET /search shape: { results: [], total, page, limit, q, filters }",
+                                               "GET /incidents/:id/similar shape: { similar: [], incidentId }",
+                                               "GET /graph/patterns shape: { patterns: [], page, hasMore }",
+                                               "GET /graph/neighbors shape: { root: {}, nodes: [], edges: [] }",
+                                               "POST /qa answered shape: { status: 'answered', answer, citations: [], confidence, sourceIncidents }",
+                                               "POST /qa refused shape: { status: 'refused', reason }"
+                                           ],
+                        "dependencies":  [
+                                             "W5-006"
+                                         ],
+                        "notes":  [
+                                      "Covers QE-2. apps/web/src/lib/api.ts manually mirrors API contract — goes stale silently. API changed results→data twice in Sprint 2. Frontend broke each time. See docs/MVP_PRODUCTION_PLAN.md QE-2."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-007-QA",
+                        "title":  "QA Review: contract tests",
+                        "tags":  [
+                                     "review",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/tests/contracts.test.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Manually break one response field, verify contract test fails.",
+                                                    "Restore field, verify test passes.",
+                                                    "Contract tests run in under 2s each."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-007"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-008",
+                        "title":  "NLP extraction quality fixes (noise filter + symptom extraction + service regex)",
+                        "tags":  [
+                                     "backend",
+                                     "nlp"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "validateNode: NOISE_TERMS check applies only when !name.includes('-') && !name.includes(' ').",
+                                                    "extractServiceFromMeta: regex matches only hyphenated (payment-api) or camelCase (PaymentAPI) candidates. Rejects bare words.",
+                                                    "ruleExtractGraph: break removed from SYMPTOM_PATTERNS loop — multiple symptoms per section extracted.",
+                                                    "All 83 existing NLP tests still pass. New tests added for all three fixes."
+                                                ],
+                        "tests_required":  [
+                                               "validateNode({ name: 'api', node_type: 'service' }) → null (noise)",
+                                               "validateNode({ name: 'payment-api', node_type: 'service' }) → not null (hyphenated)",
+                                               "extractServiceFromMeta('Production Database Outage') → null",
+                                               "extractServiceFromMeta('payment-api timeout incident') → 'payment-api'",
+                                               "ruleExtractGraph extracts 2 symptoms from section containing 2 symptom patterns"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers NLP-2 and NLP-3 (noise + service regex) and ML-7 (one symptom per section cap). See docs/MVP_PRODUCTION_PLAN.md NLP-2, NLP-3, ML-7."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-008-QA",
+                        "title":  "QA Review: NLP extraction quality",
+                        "tags":  [
+                                     "review",
+                                     "nlp"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js",
+                                      "incident-ingest/packages/nlp/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "ruleExtractGraph on fixture section with 3 symptom phrases → all 3 extracted.",
+                                                    "'api' alone blocked but 'api-gateway' passes.",
+                                                    "extractServiceFromMeta does not add environment/cloud terms to graph.",
+                                                    "All 83+ NLP unit tests pass."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-008"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint5-Release",
+                        "title":  "Sprint 5 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/SPRINT_5_PLAN.md",
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker compose up -d --wait starts db + redis + minio + api + worker, all healthy.",
+                                                    "Upload a .txt postmortem → worker processes → incident created with real semantic embedding.",
+                                                    "GET /search?q=<keyword> returns ranked results using real embeddings.",
+                                                    "Duplicate upload returns 409. PDF upload returns 400.",
+                                                    "NODE_ENV=production without ADMIN_TOKEN → API refuses to start.",
+                                                    "API logs are JSON (verified with | jq .).",
+                                                    "CI pipeline green on feat/sprint5 branch.",
+                                                    "README, RUNBOOK, DEMO_SCRIPT updated for Sprint 5 stack.",
+                                                    "TASK_BOARD statuses updated from actual QA outcomes."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end Sprint 5 smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "W5-001-QA",
+                                             "W5-002-QA",
+                                             "W5-003-QA",
+                                             "W5-004-QA",
+                                             "W5-005-QA",
+                                             "W5-006-QA",
+                                             "W5-007-QA",
+                                             "W5-008-QA"
+                                         ],
+                        "notes":  [
+                                      "Do not mark Sprint 5 complete until full docker compose stack runs, real embeddings verified, and CI is green."
                                   ]
                     }
                 ]

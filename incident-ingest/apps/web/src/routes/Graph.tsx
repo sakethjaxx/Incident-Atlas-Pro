@@ -1,11 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  getGraphPatterns,
-  getGraphNeighbors,
-  type GraphNode,
-  type GraphPattern,
-} from "../lib/api";
+import { getGraphPatterns, getGraphNeighbors, type GraphNode, type GraphPattern } from "../lib/api";
+import Icon from "../components/Icon";
 
 const NODE_TYPE_COLOR: Record<string, string> = {
   service: "var(--brand)",
@@ -36,9 +32,7 @@ function NodeBadge({
         borderColor: nodeColor(node.type),
         color: nodeColor(node.type),
         cursor: onClick ? "pointer" : "default",
-        background: selected
-          ? `color-mix(in srgb, ${nodeColor(node.type)} 12%, transparent)`
-          : undefined,
+        background: selected ? `color-mix(in srgb, ${nodeColor(node.type)} 12%, transparent)` : undefined,
         fontFamily: "inherit",
         fontSize: "0.75rem",
       }}
@@ -63,7 +57,7 @@ function NeighborsPanel({ nodeId }: { nodeId: string }) {
   if (error instanceof Error) {
     return (
       <div className="alert alert-error" style={{ marginTop: 8 }}>
-        <span>!</span>
+        <Icon name="alert" size={18} />
         <div>{error.message}</div>
       </div>
     );
@@ -71,7 +65,7 @@ function NeighborsPanel({ nodeId }: { nodeId: string }) {
 
   if (!data || data.edges.length === 0) {
     return (
-      <p style={{ padding: "10px 0", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+      <p style={{ padding: "10px 0", fontSize: "0.8125rem", color: "var(--text-secondary)" }}>
         No edges found for this node.
       </p>
     );
@@ -92,8 +86,8 @@ function NeighborsPanel({ nodeId }: { nodeId: string }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {data.edges.map((edge) => {
-          const fromNode = data.nodes.find((n) => n.id === edge.from);
-          const toNode = data.nodes.find((n) => n.id === edge.to);
+          const fromNode = data.nodes.find((node) => node.id === edge.from);
+          const toNode = data.nodes.find((node) => node.id === edge.to);
           return (
             <div
               key={edge.id}
@@ -124,12 +118,12 @@ function NeighborsPanel({ nodeId }: { nodeId: string }) {
                 style={{
                   marginLeft: "auto",
                   fontSize: "0.6875rem",
-                  color: "var(--text-muted)",
+                  color: "var(--text-secondary)",
                   fontFamily: "monospace",
                 }}
                 title="evidence section id"
               >
-                §{edge.evidence_section_id.slice(0, 8)}
+                evidence {edge.evidence_section_id.slice(0, 8)}
               </span>
             </div>
           );
@@ -148,15 +142,15 @@ function PatternCard({
   onSelectNode: (id: string) => void;
   selectedNodeId: string | null;
 }) {
-  const expanded = pattern.nodes.some((n) => n.id === selectedNodeId);
+  const expanded = pattern.nodes.some((node) => node.id === selectedNodeId);
 
   return (
     <div className="card card-padded" style={{ marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <span className="badge badge-brand">
           {pattern.incidentCount} incident{pattern.incidentCount !== 1 ? "s" : ""}
         </span>
-        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
           {pattern.nodes.length} node{pattern.nodes.length !== 1 ? "s" : ""}
         </span>
       </div>
@@ -178,15 +172,10 @@ function PatternCard({
 export default function Graph() {
   const [service, setService] = useState("");
   const [symptom, setSymptom] = useState("");
-  const [submitted, setSubmitted] = useState<{
-    service: string;
-    symptom: string;
-  } | null>(null);
+  const [submitted, setSubmitted] = useState<{ service: string; symptom: string } | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const hasQuery =
-    submitted !== null &&
-    (submitted.service.length > 0 || submitted.symptom.length > 0);
+  const hasQuery = submitted !== null && (submitted.service.length > 0 || submitted.symptom.length > 0);
 
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ["graph", "patterns", submitted],
@@ -208,68 +197,80 @@ export default function Graph() {
   }
 
   function handleSelectNode(id: string) {
-    setSelectedNodeId((prev) => (prev === id ? null : id));
+    setSelectedNodeId((previous) => (previous === id ? null : id));
   }
 
   return (
     <section className="fade-in">
       <div className="page-header">
-        <div>
+        <div className="page-header-title">
           <h1>Knowledge Graph</h1>
-          <p>Browse recurring failure patterns extracted from incident sections.</p>
+          <p>Browse recurring failure patterns extracted from structured incident sections.</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="search-form-panel">
-        <div
-          className="search-form-grid"
-          style={{ gridTemplateColumns: "1fr 1fr auto" }}
-        >
-          <input
-            className="form-input"
-            value={service}
-            onChange={(e) => setService(e.target.value)}
-            placeholder="Service name (e.g. payment-api)"
-            aria-label="Filter by service"
-          />
-          <input
-            className="form-input"
-            value={symptom}
-            onChange={(e) => setSymptom(e.target.value)}
-            placeholder="Symptom (e.g. high error rate)"
-            aria-label="Filter by symptom"
-          />
-          <button
-            className="btn btn-primary"
-            type="submit"
-            disabled={!service.trim() && !symptom.trim()}
-          >
-            {isFetching ? "Searching..." : "Find Patterns"}
-          </button>
+        <div className="search-form-grid graph-filter-grid">
+          <div className="field-stack">
+            <label htmlFor="graph-service">Service</label>
+            <input
+              id="graph-service"
+              className="form-input"
+              value={service}
+              onChange={(event) => setService(event.target.value)}
+              placeholder="payment-api"
+              aria-label="Filter by service"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="graph-symptom">Symptom</label>
+            <input
+              id="graph-symptom"
+              className="form-input"
+              value={symptom}
+              onChange={(event) => setSymptom(event.target.value)}
+              placeholder="high error rate"
+              aria-label="Filter by symptom"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="graph-submit">Run</label>
+            <button
+              id="graph-submit"
+              className="btn btn-primary"
+              type="submit"
+              disabled={!service.trim() && !symptom.trim()}
+            >
+              <Icon name="graph" size={16} />
+              {isFetching ? "Searching..." : "Find Patterns"}
+            </button>
+          </div>
         </div>
       </form>
 
       {!hasQuery && (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">@</div>
+            <div className="empty-state-icon">
+              <Icon name="graph" size={28} />
+            </div>
             <h3>Explore the knowledge graph</h3>
-            <p>Filter by service or symptom to find recurring failure patterns.</p>
+            <p>Filter by service or symptom to uncover patterns that repeat across incidents.</p>
           </div>
         </div>
       )}
 
       {isLoading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[1, 2, 3].map((n) => (
-            <div key={n} className="skeleton" style={{ height: 80, borderRadius: 14 }} />
+          {[1, 2, 3].map((item) => (
+            <div key={item} className="skeleton" style={{ height: 80, borderRadius: 14 }} />
           ))}
         </div>
       )}
 
       {error instanceof Error && (
         <div className="alert alert-error">
-          <span>!</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Query failed.</strong> {error.message}
           </div>
@@ -279,9 +280,11 @@ export default function Graph() {
       {!isLoading && !error && hasQuery && patterns.length === 0 && (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">0</div>
+            <div className="empty-state-icon">
+              <Icon name="inbox" size={28} />
+            </div>
             <h3>No patterns found</h3>
-            <p>Try a different service or symptom name.</p>
+            <p>Try a different service name, a broader symptom, or ingest more incident material first.</p>
           </div>
         </div>
       )}
@@ -289,12 +292,11 @@ export default function Graph() {
       {patterns.length > 0 && (
         <div>
           <div className="search-summary-line">
-            {patterns.length} pattern{patterns.length !== 1 ? "s" : ""} ·{" "}
-            click a node to inspect its neighbors
+            {patterns.length} pattern{patterns.length !== 1 ? "s" : ""} | click a node to inspect its neighbors
           </div>
-          {patterns.map((pattern, idx) => (
+          {patterns.map((pattern, index) => (
             <PatternCard
-              key={idx}
+              key={index}
               pattern={pattern}
               onSelectNode={handleSelectNode}
               selectedNodeId={selectedNodeId}

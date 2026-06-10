@@ -13,14 +13,14 @@
  *   7. Empty sections — returns true without DB calls
  *
  * No real DB or network required — all DB calls are mocked.
- * ANTHROPIC_API_KEY is deleted to force the rule fallback path.
+ * GRAPH_EXTRACTOR is unset to force the deterministic rule extractor.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { safeIndexIncidentGraph } from "../graph.js";
 
 // Force rule fallback (no LLM call) for all tests
-delete process.env.ANTHROPIC_API_KEY;
+delete process.env.GRAPH_EXTRACTOR;
 
 // ── Mock Prisma client factory ─────────────────────────────────────────────────
 

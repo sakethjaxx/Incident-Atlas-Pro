@@ -10,12 +10,18 @@
  *   node apps/worker/src/reindex.js [--batch 50] [--dry-run]
  *
  * Options:
- *   --batch N    How many incidents to process per page (default: 50)
- *   --dry-run    Log what would be indexed but don't write anything
+ *   --batch N         How many incidents to process per page (default: 50)
+ *   --dry-run         Log what would be indexed but don't write anything
  *   --incidents-only  Skip section embeddings
+ *   --chunks          Also (re)build retrieval chunks for ALL incidents using
+ *                     the configured EMBEDDING_PROVIDER, incl. TurboQuant codes
+ *                     when TURBOQUANT_ENABLED=true. Use after switching
+ *                     embedding models or TurboQuant settings.
+ *   --chunks-only     Only rebuild chunks (skip legacy incident/section embeddings)
  *
  * Safe to interrupt and resume — already-indexed records (embedding IS NOT NULL)
- * are skipped automatically.
+ * are skipped automatically. Chunk rebuild is idempotent (delete + insert per
+ * incident).
  *
  * Exit codes:
  *   0  Success (all records indexed or nothing to do)
@@ -28,6 +34,7 @@ import {
   createEmbedding,
   formatEmbeddingForSql,
 } from "@pkg/nlp";
+import { indexIncidentChunks } from "./chunks.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +43,8 @@ const batchArg = args.indexOf("--batch");
 const BATCH_SIZE = batchArg !== -1 ? Number(args[batchArg + 1]) || 50 : 50;
 const DRY_RUN = args.includes("--dry-run");
 const INCIDENTS_ONLY = args.includes("--incidents-only");
+const CHUNKS_ONLY = args.includes("--chunks-only");
+const REBUILD_CHUNKS = args.includes("--chunks") || CHUNKS_ONLY;
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 
@@ -125,10 +134,55 @@ async function indexIncident(incident) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Rebuild retrieval chunks (and TurboQuant codes) for every incident.
+ * Uses the configured EMBEDDING_PROVIDER / TURBOQUANT_* environment.
+ */
+async function rebuildAllChunks() {
+  let cursor = null;
+  let incidents = 0;
+  let chunksWritten = 0;
+
+  while (true) {
+    const batch = await prisma.incident.findMany({
+      where: cursor ? { id: { gt: cursor } } : {},
+      include: { sections: { orderBy: { createdAt: "asc" } } },
+      orderBy: { id: "asc" },
+      take: BATCH_SIZE,
+    });
+    if (batch.length === 0) break;
+
+    for (const incident of batch) {
+      cursor = incident.id;
+      try {
+        if (DRY_RUN) {
+          console.log(`  [dry-run] would rebuild chunks for incident ${incident.id}`);
+        } else {
+          chunksWritten += await indexIncidentChunks(prisma, incident);
+        }
+        incidents += 1;
+      } catch (err) {
+        console.error(`[reindex] chunk rebuild failed for ${incident.id}:`, err?.message ?? err);
+      }
+    }
+  }
+
+  console.log(`[reindex] Chunks rebuilt: incidents=${incidents}, chunks=${chunksWritten}`);
+}
+
 async function main() {
   console.log(
-    `[reindex] Starting backfill — batch=${BATCH_SIZE}, dry-run=${DRY_RUN}, incidents-only=${INCIDENTS_ONLY}`
+    `[reindex] Starting backfill — batch=${BATCH_SIZE}, dry-run=${DRY_RUN}, ` +
+      `incidents-only=${INCIDENTS_ONLY}, chunks=${REBUILD_CHUNKS}, chunks-only=${CHUNKS_ONLY}`
   );
+
+  if (REBUILD_CHUNKS) {
+    await rebuildAllChunks();
+    if (CHUNKS_ONLY) {
+      await prisma.$disconnect();
+      process.exit(0);
+    }
+  }
 
   // Count unindexed incidents
   const totalUnindexed = await prisma.$queryRaw`

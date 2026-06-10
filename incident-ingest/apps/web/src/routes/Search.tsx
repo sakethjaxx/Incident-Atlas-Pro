@@ -1,10 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import {
-  searchIncidents,
-  type SearchResult,
-} from "../lib/api";
+import { searchIncidents, type SearchResult } from "../lib/api";
+import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
   return Math.max(0, Math.min(99, Math.round(value * 100)));
@@ -83,11 +81,15 @@ export default function Search() {
   const [company, setCompany] = useState("");
   const [severity, setSeverity] = useState("");
   const [tag, setTag] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [submitted, setSubmitted] = useState({
     q: "",
     company: "",
     severity: "",
     tag: "",
+    from: "",
+    to: "",
   });
 
   const hasSubmittedQuery = submitted.q.trim().length > 0;
@@ -100,6 +102,8 @@ export default function Search() {
         filterCompany: submitted.company || undefined,
         filterSeverity: submitted.severity || undefined,
         filterTag: submitted.tag || undefined,
+        filterFrom: submitted.from ? new Date(`${submitted.from}T00:00:00`).toISOString() : undefined,
+        filterTo: submitted.to ? new Date(`${submitted.to}T23:59:59`).toISOString() : undefined,
         limit: 20,
       }),
     enabled: hasSubmittedQuery,
@@ -115,26 +119,33 @@ export default function Search() {
       company: company.trim(),
       severity: severity.trim(),
       tag: tag.trim(),
+      from: fromDate,
+      to: toDate,
     });
   }
 
   return (
     <section className="fade-in">
       <div className="page-header">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 }}>
-          <div>
+        <div className="page-header-row">
+          <div className="page-header-title">
             <h1>Search</h1>
-            <p>Find past incidents and jump straight to evidence.</p>
+            <p>Find past incidents and jump straight to the exact evidence that matches the symptom.</p>
           </div>
-          <Link className="btn btn-secondary" to="/incidents">
-            Browse Incidents
-          </Link>
+          <div className="page-header-actions">
+            <Link className="btn btn-secondary" to="/incidents">
+              <Icon name="incidents" size={16} />
+              Browse Incidents
+            </Link>
+          </div>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="search-form-panel">
         <div className="search-bar" style={{ marginBottom: 0 }}>
-          <span className="search-icon">?</span>
+          <span className="search-icon">
+            <Icon name="search" size={16} />
+          </span>
           <input
             id="search-query"
             type="search"
@@ -146,30 +157,68 @@ export default function Search() {
         </div>
 
         <div className="search-form-grid">
-          <input
-            className="form-input"
-            value={company}
-            onChange={(event) => setCompany(event.target.value)}
-            placeholder="Company"
-            aria-label="Filter by company"
-          />
-          <input
-            className="form-input"
-            value={severity}
-            onChange={(event) => setSeverity(event.target.value)}
-            placeholder="Severity"
-            aria-label="Filter by severity"
-          />
-          <input
-            className="form-input"
-            value={tag}
-            onChange={(event) => setTag(event.target.value)}
-            placeholder="Tag"
-            aria-label="Filter by tag"
-          />
-          <button className="btn btn-primary" type="submit" disabled={!query.trim()}>
-            {isFetching ? "Searching..." : "Run Search"}
-          </button>
+          <div className="field-stack">
+            <label htmlFor="search-company">Company</label>
+            <input
+              id="search-company"
+              className="form-input"
+              value={company}
+              onChange={(event) => setCompany(event.target.value)}
+              placeholder="Stripe"
+              aria-label="Filter by company"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="search-severity">Severity</label>
+            <input
+              id="search-severity"
+              className="form-input"
+              value={severity}
+              onChange={(event) => setSeverity(event.target.value)}
+              placeholder="SEV-1"
+              aria-label="Filter by severity"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="search-tag">Tag</label>
+            <input
+              id="search-tag"
+              className="form-input"
+              value={tag}
+              onChange={(event) => setTag(event.target.value)}
+              placeholder="database"
+              aria-label="Filter by tag"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="search-from">From</label>
+            <input
+              id="search-from"
+              className="form-input"
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              aria-label="Filter from date"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="search-to">To</label>
+            <input
+              id="search-to"
+              className="form-input"
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              aria-label="Filter to date"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="search-submit">Run</label>
+            <button id="search-submit" className="btn btn-primary" type="submit" disabled={!query.trim()}>
+              <Icon name="search" size={16} />
+              {isFetching ? "Searching..." : "Run Search"}
+            </button>
+          </div>
         </div>
       </form>
 
@@ -182,9 +231,11 @@ export default function Search() {
       {!hasSubmittedQuery && (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">/</div>
+            <div className="empty-state-icon">
+              <Icon name="search" size={28} />
+            </div>
             <h3>Search the incident memory</h3>
-            <p>Try a symptom, a failure mode, or a fix.</p>
+            <p>Try a symptom, a failure mode, a service name, or the fix you remember.</p>
           </div>
         </div>
       )}
@@ -199,11 +250,12 @@ export default function Search() {
 
       {error instanceof Error && (
         <div className="alert alert-error">
-          <span>!</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Search failed.</strong> {error.message}
             <button
               className="btn btn-secondary"
+              type="button"
               onClick={() => refetch()}
               style={{ marginLeft: 8, padding: "3px 10px", fontSize: "0.75rem" }}
             >
@@ -216,9 +268,11 @@ export default function Search() {
       {!isLoading && !error && hasSubmittedQuery && results.length === 0 && (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">0</div>
+            <div className="empty-state-icon">
+              <Icon name="inbox" size={28} />
+            </div>
             <h3>No matching incidents</h3>
-            <p>Try a broader term or remove one of the filters.</p>
+            <p>Try a broader term, remove one filter, or search with the user-visible symptom instead of the root cause.</p>
           </div>
         </div>
       )}

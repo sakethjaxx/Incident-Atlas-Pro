@@ -67,6 +67,8 @@ export interface SearchParams {
   filterCompany?: string;
   filterSeverity?: string;
   filterTag?: string;
+  filterFrom?: string;
+  filterTo?: string;
   page?: number;
   limit?: number;
 }
@@ -230,6 +232,28 @@ export interface UploadResponse {
   jobId: string;
   documentId: string;
   bullmqJobId?: string;
+  pollUrl?: string;
+  fileName?: string;
+  accepted?: number;
+  uploads?: UploadItem[];
+}
+
+export interface UploadItem {
+  fileName: string;
+  jobId: string;
+  documentId: string;
+  bullmqJobId?: string;
+  pollUrl: string;
+}
+
+export interface BatchUploadResponse {
+  accepted: number;
+  uploads: UploadItem[];
+  jobId?: string;
+  documentId?: string;
+  bullmqJobId?: string;
+  pollUrl?: string;
+  fileName?: string;
 }
 
 // ─── HTTP layer ───────────────────────────────────────────────────────────────
@@ -299,6 +323,37 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   return res.json() as Promise<UploadResponse>;
 }
 
+export async function uploadFiles(files: File[]): Promise<BatchUploadResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+
+  const res = await fetch(`${API_URL}/ingest/upload`, {
+    method: "POST",
+    body: formData,
+    headers,
+  });
+
+  if (!res.ok) {
+    let message = `Upload failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string") {
+        message = data.error;
+      }
+    } catch {
+      // Ignore JSON parse failure.
+    }
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<BatchUploadResponse>;
+}
+
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
 /**
@@ -306,8 +361,16 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
  * The API returns a paginated envelope { data, total, page, limit };
  * we unwrap .data here so all consumers get a plain Incident[].
  */
-export function getIncidents(): Promise<Incident[]> {
-  return request<PaginatedResponse<Incident>>("/incidents").then((res) => {
+export function getIncidents(params?: {
+  page?: number;
+  limit?: number;
+}): Promise<Incident[]> {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const path = qs.size > 0 ? `/incidents?${qs.toString()}` : "/incidents";
+  return request<PaginatedResponse<Incident>>(path).then((res) => {
     if (Array.isArray(res)) return res as unknown as Incident[];
     if (res && Array.isArray(res.data)) return res.data;
     return [];
@@ -343,6 +406,8 @@ export function searchIncidents(params: SearchParams): Promise<SearchResponse> {
   if (params.filterCompany) qs.set("company", params.filterCompany);
   if (params.filterSeverity) qs.set("severity", params.filterSeverity);
   if (params.filterTag) qs.set("tag", params.filterTag);
+  if (params.filterFrom) qs.set("from", params.filterFrom);
+  if (params.filterTo) qs.set("to", params.filterTo);
   if (params.page) qs.set("page", String(params.page));
   if (params.limit) qs.set("limit", String(params.limit));
   return request<SearchResponse>(`/search?${qs.toString()}`);

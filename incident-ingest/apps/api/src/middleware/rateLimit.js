@@ -14,9 +14,16 @@ const standardOptions = {
   handler: customHandler,
 };
 
+// Env-overridable limits so benchmark/load runs don't need code changes.
+// Defaults match the Sprint 4 spec values.
+function envLimit(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export const publicReadLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: envLimit("READ_RATE_LIMIT_PER_MIN", 60),
   ...standardOptions,
 });
 
@@ -28,7 +35,7 @@ export const jobsLimiter = rateLimit({
 
 export const adminIngestLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: envLimit("INGEST_RATE_LIMIT_PER_MIN", 10),
   keyGenerator: (req, res) => req.headers.authorization || ipKeyGenerator(req, res),
   ...standardOptions,
 });
@@ -55,7 +62,7 @@ export const evalLatestLimiter = rateLimit({
 
 export const qaLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: envLimit("QA_RATE_LIMIT_PER_MIN", 10),
   keyGenerator: (req, res) => req.headers.authorization || ipKeyGenerator(req, res),
   ...standardOptions,
 });

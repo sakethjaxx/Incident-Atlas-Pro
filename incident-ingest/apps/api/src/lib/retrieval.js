@@ -3,10 +3,50 @@ import {
   createEmbedding,
   formatEmbeddingForSql,
   tokenizeForRetrieval,
+  embedText,
+  getRagConfig,
+  describeEmbeddingProvider,
+  rrfFuse,
+  buildRetrievalTrace,
+  rerankCandidates,
+  prepareQuery,
+  scanCodes,
+  deserializeQuantized,
 } from "@pkg/nlp";
 
 const VECTOR_MATCH_THRESHOLD = 0.18;
 const MAX_MATCHED_SECTIONS = 3;
+
+// ── TurboQuant code cache ─────────────────────────────────────────────────────
+// Loading ALL chunk codes from DB on every query is O(corpus) — fine at <100k
+// chunks but wasteful on repeated queries. Cache the deserialized entries for
+// the lifetime of the process; invalidate on any chunk write.
+const _tqCache = {
+  entries: /** @type {Array<{id:string,codes:Uint8Array,residual:Uint8Array|null,meta:object}>|null} */ (null),
+  generation: 0,
+};
+
+/** Call after any write to the chunks table so the next TQ scan reloads. */
+export function invalidateTqCache() {
+  _tqCache.entries = null;
+  _tqCache.generation += 1;
+}
+
+// ── Chunk retrieval configuration (Sprint 5) ─────────────────────────────────
+export const CHUNK_RETRIEVAL = Object.freeze({
+  /** Candidates pulled from each backend before fusion. */
+  CANDIDATES_PER_BACKEND: 50,
+  /** Fused candidates passed to the reranker. */
+  RERANK_POOL: 40,
+  /** Default number of evidence chunks returned to QA (5–8 recommended). */
+  DEFAULT_LIMIT: 8,
+  /** RRF weight for the keyword (FTS) list. */
+  KEYWORD_WEIGHT: 1.0,
+  /** RRF weight for the vector list. */
+  VECTOR_WEIGHT: 1.0,
+  /** RRF weight for the TurboQuant approximate list (experimental). */
+  TURBOQUANT_WEIGHT: 0.9,
+});
 
 export function buildIncidentEmbeddingText(incident) {
   return [
@@ -600,4 +640,365 @@ function compareIncidentDates(left, right) {
   const leftTime = left.date ? new Date(left.date).getTime() : new Date(left.createdAt).getTime();
   const rightTime = right.date ? new Date(right.date).getTime() : new Date(right.createdAt).getTime();
   return rightTime - leftTime;
+}
+
+// ─── Sprint 5: chunk-level hybrid retrieval ───────────────────────────────────
+//
+// Pipeline: metadata filters → (FTS ∥ vector backend) → RRF fusion → rerank →
+// top-N evidence chunks with exact section citation anchors.
+//
+// Vector backend is selected by RETRIEVAL_BACKEND:
+//   pgvector   — stable baseline (HNSW/IVFFlat index)
+//   turboquant — EXPERIMENTAL compressed scan, verified against full vectors
+//   hybrid     — both lists fused together
+//
+// Returns null when the chunk index is empty/unavailable so callers can fall
+// back to the legacy section-level retrieval path.
+
+function buildChunkSqlFilters(filters, params) {
+  const clauses = ["TRUE"];
+  if (filters?.company) {
+    params.push(filters.company);
+    clauses.push(`lower(c."company") = lower($${params.length})`);
+  }
+  if (filters?.severity) {
+    params.push(filters.severity);
+    clauses.push(`lower(c."severity") = lower($${params.length})`);
+  }
+  if (filters?.tag) {
+    params.push(filters.tag);
+    clauses.push(`$${params.length} = ANY(c."tags")`);
+  }
+  if (Array.isArray(filters?.incidentIds) && filters.incidentIds.length > 0) {
+    params.push(filters.incidentIds);
+    clauses.push(`c."incident_id" = ANY($${params.length}::uuid[])`);
+  }
+  return clauses.join(" AND ");
+}
+
+function buildChunkPrismaFilters(filters) {
+  const where = {};
+  if (filters?.company) where.company = { equals: filters.company, mode: "insensitive" };
+  if (filters?.severity) where.severity = { equals: filters.severity, mode: "insensitive" };
+  if (filters?.tag) where.tags = { has: filters.tag };
+  if (Array.isArray(filters?.incidentIds) && filters.incidentIds.length > 0) {
+    where.incidentId = { in: filters.incidentIds };
+  }
+  return where;
+}
+
+async function chunkKeywordCandidates(client, q, filters, limit) {
+  const params = [q];
+  const filterSql = buildChunkSqlFilters(filters, params);
+  params.push(limit);
+  const rows = await client.$queryRawUnsafe(
+    `
+      SELECT
+        c."id",
+        ts_rank_cd(to_tsvector('english', coalesce(c."text", '')), plainto_tsquery('english', $1)) AS score
+      FROM "chunks" c
+      WHERE ${filterSql}
+        AND plainto_tsquery('english', $1) @@ to_tsvector('english', coalesce(c."text", ''))
+      ORDER BY score DESC, c."id" ASC
+      LIMIT $${params.length}
+    `,
+    ...params
+  );
+  return rows.map((row) => ({ id: row.id, score: Number(row.score) }));
+}
+
+async function chunkPgvectorCandidates(client, queryVectorSql, filters, limit) {
+  const params = [queryVectorSql];
+  const filterSql = buildChunkSqlFilters(filters, params);
+  params.push(limit);
+  // The VECTOR_MATCH_THRESHOLD floor mirrors the legacy incident search: ANN
+  // always returns *nearest* neighbors, even meaningless ones — without the
+  // floor, off-topic questions would surface junk candidates and defeat the
+  // QA insufficient-evidence gate.
+  const rows = await client.$queryRawUnsafe(
+    `
+      SELECT
+        c."id",
+        GREATEST(0, 1 - (c."embedding" <=> $1::vector)) AS score
+      FROM "chunks" c
+      WHERE ${filterSql}
+        AND c."embedding" IS NOT NULL
+        AND 1 - (c."embedding" <=> $1::vector) > ${VECTOR_MATCH_THRESHOLD}
+      ORDER BY c."embedding" <=> $1::vector, c."id" ASC
+      LIMIT $${params.length}
+    `,
+    ...params
+  );
+  return rows.map((row) => ({ id: row.id, score: Number(row.score) }));
+}
+
+/**
+ * EXPERIMENTAL: approximate candidates from TurboQuant compressed codes,
+ * then (when possible) verified/re-scored against the full pgvector column.
+ */
+async function chunkTurboquantCandidates(client, queryVector, filters, limit, config) {
+  // Process-level TQ code cache. Loading ALL chunk codes from DB on every
+  // query is O(corpus) bytes of I/O. Cache the deserialized entries for the
+  // process lifetime; invalidateTqCache() resets it after any chunk write.
+  // The cache stores filtering metadata (company/severity/tags/incidentId)
+  // alongside the quantized vectors so in-process filtering avoids extra queries.
+  if (!_tqCache.entries) {
+    const allRows = await client.chunk.findMany({
+      where: { tqCodes: { not: null } },
+      select: {
+        id: true, incidentId: true, company: true, severity: true, tags: true,
+        tqCodes: true, tqResidual: true, tqMeta: true,
+      },
+    });
+    if (allRows.length === 0) return { approx: [], verified: null };
+
+    const refMeta = allRows[0].tqMeta;
+    if (!refMeta?.paddedDims) return { approx: [], verified: null };
+
+    const built = [];
+    for (const row of allRows) {
+      const meta = row.tqMeta;
+      if (
+        !meta ||
+        meta.paddedDims !== refMeta.paddedDims ||
+        meta.rotation !== refMeta.rotation ||
+        meta.seed !== refMeta.seed
+      ) continue;
+      built.push({
+        id: row.id,
+        incidentId: row.incidentId,
+        company: row.company,
+        severity: row.severity,
+        tags: row.tags ?? [],
+        ...deserializeQuantized({ codes: row.tqCodes, residual: row.tqResidual, meta }),
+      });
+    }
+    _tqCache.entries = built;
+  }
+
+  if (_tqCache.entries.length === 0) return { approx: [], verified: null };
+
+  const firstMeta = _tqCache.entries[0].meta;
+  if (!firstMeta) return { approx: [], verified: null };
+
+  const prepared = prepareQuery(queryVector, {
+    dims: firstMeta.dims,
+    rotation: firstMeta.rotation,
+    seed: firstMeta.seed,
+  });
+  if (!prepared) return { approx: [], verified: null };
+
+  // Apply in-process filter so scoped queries (company/severity/tag/incidentIds)
+  // only scan eligible chunks — avoids inflating recall with out-of-scope results.
+  let entries = _tqCache.entries;
+  if (filters) {
+    const incidentIdSet = Array.isArray(filters.incidentIds) && filters.incidentIds.length > 0
+      ? new Set(filters.incidentIds) : null;
+    entries = entries.filter((e) => {
+      if (incidentIdSet && !incidentIdSet.has(e.incidentId)) return false;
+      if (filters.company && e.company?.toLowerCase() !== filters.company.toLowerCase()) return false;
+      if (filters.severity && e.severity?.toLowerCase() !== filters.severity.toLowerCase()) return false;
+      if (filters.tag && !e.tags.includes(filters.tag)) return false;
+      return true;
+    });
+  }
+
+  // Same minimum-similarity floor as the pgvector path (see comment there).
+  const approx = scanCodes(prepared, entries, limit).filter(
+    (item) => item.score > VECTOR_MATCH_THRESHOLD
+  );
+
+  // Verification pass: exact cosine over the full stored vectors for the
+  // approximate top set (cheap — it's a bounded id list).
+  let verified = null;
+  try {
+    const queryVectorSql = formatEmbeddingForSql(queryVector);
+    const ids = approx.map((item) => item.id);
+    if (queryVectorSql && ids.length > 0) {
+      const verifiedRows = await client.$queryRawUnsafe(
+        `
+          SELECT c."id", GREATEST(0, 1 - (c."embedding" <=> $1::vector)) AS score
+          FROM "chunks" c
+          WHERE c."id" = ANY($2::uuid[]) AND c."embedding" IS NOT NULL
+          ORDER BY c."embedding" <=> $1::vector
+        `,
+        queryVectorSql,
+        ids
+      );
+      if (verifiedRows.length > 0) {
+        verified = verifiedRows
+          .map((row) => ({ id: row.id, score: Number(row.score) }))
+          .filter((row) => row.score > VECTOR_MATCH_THRESHOLD);
+      }
+    }
+  } catch {
+    verified = null; // keep approximate scores when full vectors are unavailable
+  }
+
+  return { approx, verified };
+}
+
+/**
+ * Hybrid chunk retrieval with score fusion, optional rerank, and debug traces.
+ *
+ * @param {import('@prisma/client').PrismaClient} client
+ * @param {{
+ *   q: string,
+ *   filters?: { company?: string|null, severity?: string|null, tag?: string|null, incidentIds?: string[] },
+ *   limit?: number,
+ *   debug?: boolean,
+ *   config?: ReturnType<typeof getRagConfig>,
+ * }} params
+ * @returns {Promise<{ evidence: Array<object>, traces: Array<object> | null, meta: object } | null>}
+ *   null → chunk index empty/unavailable (caller should use the legacy path).
+ */
+export async function retrieveChunkEvidence(client, params) {
+  const config = params.config ?? getRagConfig();
+  const limit = params.limit ?? CHUNK_RETRIEVAL.DEFAULT_LIMIT;
+  const filters = params.filters ?? {};
+  const backend = config.retrieval.backend;
+
+  try {
+    const chunkCount = await client.chunk.count();
+    if (chunkCount === 0) return null;
+
+    const queryVector = await embedText(params.q, { isQuery: true, config });
+    const queryVectorSql = formatEmbeddingForSql(queryVector);
+
+    const lists = [];
+    const keyword = await chunkKeywordCandidates(
+      client,
+      params.q,
+      filters,
+      CHUNK_RETRIEVAL.CANDIDATES_PER_BACKEND
+    );
+    if (keyword.length > 0) {
+      lists.push({ name: "keyword", weight: CHUNK_RETRIEVAL.KEYWORD_WEIGHT, items: keyword });
+    }
+
+    let turboquantUsed = false;
+    let turboquantVerified = false;
+
+    if ((backend === "pgvector" || backend === "hybrid") && queryVectorSql) {
+      const vector = await chunkPgvectorCandidates(
+        client,
+        queryVectorSql,
+        filters,
+        CHUNK_RETRIEVAL.CANDIDATES_PER_BACKEND
+      );
+      if (vector.length > 0) {
+        lists.push({ name: "vector", weight: CHUNK_RETRIEVAL.VECTOR_WEIGHT, items: vector });
+      }
+    }
+
+    if ((backend === "turboquant" || backend === "hybrid") && queryVector) {
+      const { approx, verified } = await chunkTurboquantCandidates(
+        client,
+        queryVector,
+        filters,
+        CHUNK_RETRIEVAL.CANDIDATES_PER_BACKEND,
+        config
+      );
+      const items = verified ?? approx;
+      turboquantUsed = items.length > 0;
+      turboquantVerified = verified !== null;
+      if (items.length > 0) {
+        lists.push({
+          name: "turboquant",
+          weight: CHUNK_RETRIEVAL.TURBOQUANT_WEIGHT,
+          items,
+        });
+      }
+    }
+
+    if (lists.length === 0) return { evidence: [], traces: params.debug ? [] : null, meta: chunkMeta(config, backend, { turboquantUsed, turboquantVerified }) };
+
+    const fused = rrfFuse(lists);
+    const pool = fused.slice(0, CHUNK_RETRIEVAL.RERANK_POOL);
+
+    const chunkRows = await client.chunk.findMany({
+      where: { id: { in: pool.map((item) => item.id) } },
+      include: {
+        incident: {
+          select: { id: true, title: true, company: true, date: true, severity: true, tags: true },
+        },
+      },
+    });
+    const rowsById = new Map(chunkRows.map((row) => [row.id, row]));
+
+    const rerankInput = pool
+      .filter((item) => rowsById.has(item.id))
+      .map((item) => ({ id: item.id, text: rowsById.get(item.id).text }));
+    const reranked = await rerankCandidates(params.q, rerankInput, { config });
+    const rerankScoreById = new Map(reranked.results.map((r) => [r.id, r.rerankScore]));
+
+    // Final order: rerank order when a reranker ran, fused order otherwise.
+    const finalOrder =
+      reranked.provider === "none"
+        ? pool.map((item) => item.id)
+        : reranked.results.map((r) => r.id);
+
+    const fusedById = new Map(pool.map((item) => [item.id, item]));
+    const evidence = [];
+    const traces = [];
+
+    for (const id of finalOrder) {
+      const row = rowsById.get(id);
+      const fusedItem = fusedById.get(id);
+      if (!row || !fusedItem) continue;
+
+      const vectorScore =
+        fusedItem.sources.vector?.score ?? fusedItem.sources.turboquant?.score ?? null;
+      const rerankScore = rerankScoreById.get(id) ?? null;
+      const retrievalScore = Math.max(
+        vectorScore ?? 0,
+        rerankScore ?? 0,
+        fusedItem.sources.keyword ? 0.3 : 0
+      );
+
+      evidence.push({
+        incidentId: row.incidentId,
+        sectionId: row.sectionId,
+        sectionType: row.sectionType,
+        text: row.text,
+        title: row.incident?.title ?? null,
+        company: row.incident?.company ?? row.company ?? null,
+        date: row.incident?.date ?? null,
+        severity: row.incident?.severity ?? row.severity ?? null,
+        tags: row.incident?.tags ?? row.tags ?? [],
+        retrievalScore: Number(retrievalScore.toFixed(4)),
+        chunkId: row.id,
+        chunkType: row.chunkType,
+      });
+
+      if (params.debug) {
+        traces.push(buildRetrievalTrace(fusedItem, { backend, rerankScore }));
+      }
+
+      if (evidence.length >= limit) break;
+    }
+
+    return {
+      evidence,
+      traces: params.debug ? traces : null,
+      meta: chunkMeta(config, backend, {
+        turboquantUsed,
+        turboquantVerified,
+        reranker: reranked.provider,
+        candidates: fused.length,
+      }),
+    };
+  } catch (error) {
+    // Missing table (P2021) before migration, or any other failure → legacy path.
+    console.warn("[retrieval] chunk retrieval unavailable, using legacy path:", error?.message);
+    return null;
+  }
+}
+
+function chunkMeta(config, backend, extra = {}) {
+  return {
+    retrievalBackend: backend,
+    embedding: describeEmbeddingProvider(config),
+    ...extra,
+  };
 }

@@ -11,9 +11,11 @@
  * Design
  * ──────
  * • extractGraph() is the primary extraction entry point.
- *   It tries an LLM call (if ANTHROPIC_API_KEY is set), validates the output,
- *   and falls back to the deterministic rule extractor on any error or
- *   low-confidence/invalid result.
+ *   The deterministic rule extractor is the DEFAULT (GRAPH_EXTRACTOR=rules).
+ *   When GRAPH_EXTRACTOR=ollama, it first tries a local open-source LLM
+ *   (GRAPH_MODEL, default qwen3:4b served by Ollama) in strict-JSON mode,
+ *   validates the output, and falls back to the rule extractor on any error,
+ *   invalid JSON, or empty post-validation result. No Anthropic/OpenAI.
  *
  * • ruleExtractGraph() is the deterministic fallback. High-precision, low-recall:
  *   its job is to keep ingest resilient when the LLM is unavailable. It is
@@ -43,8 +45,11 @@
  *     }]
  *   }
  *
- * Zero runtime dependencies beyond Node.js built-ins (and optional Anthropic SDK).
+ * Zero runtime dependencies beyond Node.js built-ins (Ollama is reached over
+ * plain HTTP with global fetch — no SDK).
  */
+
+import { getRagConfig, ollamaGenerate } from "./providers.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -311,7 +316,7 @@ export function ruleExtractGraph(sections, incidentMeta = {}) {
 // ─── LLM extraction helper ────────────────────────────────────────────────────
 
 /**
- * Build the extraction prompt for the Claude Haiku model.
+ * Build the extraction prompt for the local JSON-mode LLM (Qwen via Ollama).
  *
  * @param {Array<{id: string, type: string, text: string}>} sections
  * @param {{ title?: string, company?: string }} incidentMeta
@@ -345,10 +350,11 @@ Respond with ONLY a valid JSON object, no prose:
 }
 
 /**
- * Attempt LLM extraction via Claude Haiku 4.5 (or compatible).
- * Returns null if the LLM is unavailable, times out, or returns invalid JSON.
+ * Attempt LLM extraction via a local open-source model served by Ollama
+ * (GRAPH_MODEL, default qwen3:4b) in strict-JSON mode.
+ * Only runs when GRAPH_EXTRACTOR=ollama; returns null otherwise.
+ * Returns null if Ollama is unavailable, times out, or returns invalid JSON.
  *
- * Requires ANTHROPIC_API_KEY env var.
  * Does NOT throw — caller always gets null on failure.
  *
  * @param {Array<{id: string, type: string, text: string}>} sections
@@ -356,27 +362,21 @@ Respond with ONLY a valid JSON object, no prose:
  * @returns {Promise<{nodes: unknown[], edges: unknown[]} | null>}
  */
 async function tryLlmExtraction(sections, incidentMeta) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  const config = getRagConfig();
+  if (config.graph.extractor !== "ollama") return null;
 
   try {
-    // Lazy-import so the module is usable without the SDK installed
-    const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey });
+    const rawText = await ollamaGenerate(
+      {
+        model: config.graph.model,
+        prompt: buildExtractionPrompt(sections, incidentMeta),
+        json: true,
+        temperature: 0,
+      },
+      config
+    );
 
-    const response = await client.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: buildExtractionPrompt(sections, incidentMeta),
-        },
-      ],
-    });
-
-    const rawText = response?.content?.[0]?.text ?? "";
-    // Strip markdown code fences if present
+    // Strip markdown code fences if present (json mode shouldn't emit them, but be safe)
     const jsonText = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
     const parsed = JSON.parse(jsonText);
 
@@ -400,7 +400,7 @@ async function tryLlmExtraction(sections, incidentMeta) {
 /**
  * Extract a knowledge graph from incident sections.
  *
- * Tries the LLM path first (if ANTHROPIC_API_KEY is set).
+ * Tries the local LLM path first when GRAPH_EXTRACTOR=ollama (Qwen JSON mode).
  * Falls back to the deterministic rule extractor on any failure.
  * NEVER throws — always returns { nodes, edges }.
  *

@@ -31,6 +31,7 @@ import { PrismaClient } from "@prisma/client";
 import { parseSections, summarize } from "@pkg/nlp";
 import { safeIndexIncidentEmbeddings } from "./retrieval.js";
 import { safeIndexIncidentGraph } from "./graph.js";
+import { safeIndexIncidentChunks } from "./chunks.js";
 
 // ── DB client ─────────────────────────────────────────────────────────────────
 
@@ -176,12 +177,15 @@ export async function processParseJob(job) {
       include: { sections: true },
     });
 
-    await safeIndexIncidentEmbeddings(prisma, incident);
-
-    // ── Stage 4 (Sprint 3): extract graph entities ───────────────────────
-    // Graph extraction must NOT block or roll back ingest on failure.
+    // ── Stage 4 (Sprint 3): index embeddings + extract graph in parallel ──
+    // Both are I/O-bound and independent — run concurrently.
+    // Neither blocks nor rolls back ingest on failure (safe wrappers).
     await job.updateProgress(85);
-    await safeIndexIncidentGraph(prisma, incident);
+    await Promise.all([
+      safeIndexIncidentEmbeddings(prisma, incident),
+      safeIndexIncidentGraph(prisma, incident),
+      safeIndexIncidentChunks(prisma, incident),
+    ]);
 
     // ── Stage 5: mark done ──────────────────────────────────────────────
     await prisma.document.update({

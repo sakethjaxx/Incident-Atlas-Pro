@@ -1,0 +1,152 @@
+{
+  "version": "bench-v1",
+  "description": "Deterministic fixture incidents for retrieval/QA benchmarks. Synthetic data only.",
+  "incidents": [
+    {
+      "key": "payment-pool",
+      "title": "payment-api checkout outage from connection pool exhaustion",
+      "company": "Acme",
+      "severity": "SEV-1",
+      "tags": ["payments", "database"],
+      "sections": [
+        { "type": "impact", "text": "Checkout requests to payment-api failed for 38 minutes. Roughly 12% of customers saw HTTP 500 errors when submitting orders." },
+        { "type": "timeline", "text": "14:02 deploy completed. 14:09 elevated error rate alert fired. 14:15 incident declared. 14:40 rollback finished and error rates recovered." },
+        { "type": "rootcause", "text": "The root cause was a new ORM setting in the deploy that leaked database connections, exhausting the payment-api connection pool under load." },
+        { "type": "fix", "text": "Engineers rolled back the deploy, restarted the payment-api workers to clear the exhausted pool, and added a connection-leak regression test." }
+      ]
+    },
+    {
+      "key": "dns-resolver",
+      "title": "regional DNS resolution failure in eu-west",
+      "company": "Acme",
+      "severity": "SEV-2",
+      "tags": ["dns", "networking"],
+      "sections": [
+        { "type": "impact", "text": "Services in eu-west could not resolve internal hostnames for 22 minutes, causing intermittent timeouts for European users." },
+        { "type": "rootcause", "text": "A misconfigured resolver ACL pushed by automation blocked queries from the eu-west subnet, caused by a wrong CIDR range in the change." },
+        { "type": "fix", "text": "The on-call reverted the resolver ACL change and added CIDR validation to the network automation pipeline." }
+      ]
+    },
+    {
+      "key": "kafka-lag",
+      "title": "notification delays from kafka consumer lag",
+      "company": "Globex",
+      "severity": "SEV-3",
+      "tags": ["kafka", "notifications"],
+      "sections": [
+        { "type": "impact", "text": "Push notifications were delayed up to 45 minutes while the kafka consumer group fell behind by 9 million messages." },
+        { "type": "rootcause", "text": "A schema change doubled message size, and consumer batch settings caused repeated rebalances triggered by session timeouts." },
+        { "type": "fix", "text": "Increased consumer session timeout, scaled out the consumer group from 6 to 12 instances, and drained the backlog overnight." }
+      ]
+    },
+    {
+      "key": "redis-eviction",
+      "title": "session store outage from redis memory eviction",
+      "company": "Globex",
+      "severity": "SEV-2",
+      "tags": ["redis", "sessions"],
+      "sections": [
+        { "type": "impact", "text": "Users were randomly logged out for two hours because session keys were evicted from redis." },
+        { "type": "rootcause", "text": "A new feature cached large payloads in the shared redis cluster, pushing memory past the eviction threshold with allkeys-lru enabled." },
+        { "type": "fix", "text": "Moved the feature cache to a dedicated redis instance and set maxmemory-policy to noeviction for the session store." }
+      ]
+    },
+    {
+      "key": "cert-expiry",
+      "title": "webhook delivery failures from expired TLS certificate",
+      "company": "Initech",
+      "severity": "SEV-2",
+      "tags": ["tls", "webhooks"],
+      "sections": [
+        { "type": "impact", "text": "Outbound webhooks failed for 3 hours with TLS handshake errors, affecting 240 integration partners." },
+        { "type": "rootcause", "text": "The webhook egress proxy certificate expired because the renewal cron job had been disabled during an earlier maintenance window." },
+        { "type": "fix", "text": "Issued a new certificate, re-enabled the renewal cron, and added expiry monitoring with a 30-day alert threshold." }
+      ]
+    },
+    {
+      "key": "k8s-oom",
+      "title": "search indexer crashloop from kubernetes OOM kills",
+      "company": "Initech",
+      "severity": "SEV-3",
+      "tags": ["kubernetes", "search"],
+      "sections": [
+        { "type": "impact", "text": "Search index freshness degraded to 6 hours stale while the indexer pods were OOM killed in a crashloop." },
+        { "type": "rootcause", "text": "A library upgrade increased heap usage about 40%, exceeding the pod memory limit of 2Gi." },
+        { "type": "fix", "text": "Raised the memory limit to 4Gi, tuned the JVM heap, and added a canary stage that watches container memory before full rollout." }
+      ]
+    },
+    {
+      "key": "rate-limiter",
+      "title": "login failures from misconfigured rate limiter",
+      "company": "Acme",
+      "severity": "SEV-2",
+      "tags": ["auth", "rate-limiting"],
+      "sections": [
+        { "type": "impact", "text": "About 30% of login attempts were throttled with HTTP 429 responses for 50 minutes." },
+        { "type": "rootcause", "text": "A config push set the per-IP login limit to 5 per hour instead of 5 per minute, caused by a unit mismatch in the limiter config." },
+        { "type": "fix", "text": "Corrected the limiter window, added config schema validation, and required a second reviewer for limiter changes." }
+      ]
+    },
+    {
+      "key": "cdn-cache",
+      "title": "stale pricing shown after CDN cache poisoning",
+      "company": "Globex",
+      "severity": "SEV-3",
+      "tags": ["cdn", "caching"],
+      "sections": [
+        { "type": "impact", "text": "European customers saw prices that were 24 hours stale for most of a day." },
+        { "type": "rootcause", "text": "An origin header change made the CDN treat pricing responses as cacheable for 86400 seconds due to a missing no-store directive." },
+        { "type": "fix", "text": "Purged the CDN cache, restored the no-store header, and added a contract test for cache-control on pricing endpoints." }
+      ]
+    },
+    {
+      "key": "auth-token",
+      "title": "mobile clients logged out by token validation bug",
+      "company": "Initech",
+      "severity": "SEV-1",
+      "tags": ["auth", "mobile"],
+      "sections": [
+        { "type": "impact", "text": "All mobile sessions were invalidated at once, forcing 2 million users to log in again." },
+        { "type": "rootcause", "text": "A refactor changed the JWT clock-skew check from less-than-or-equal to less-than, rejecting tokens minted in the same second." },
+        { "type": "fix", "text": "Reverted the comparison operator, added unit tests around token boundary timestamps, and staged the re-release behind a 1% canary." }
+      ]
+    },
+    {
+      "key": "s3-policy",
+      "title": "report exports failing from object storage policy change",
+      "company": "Acme",
+      "severity": "SEV-3",
+      "tags": ["storage", "reports"],
+      "sections": [
+        { "type": "impact", "text": "Scheduled report exports failed for 12 hours with access denied errors." },
+        { "type": "rootcause", "text": "A bucket policy tightened during a security review removed the s3:PutObject permission for the reporting role." },
+        { "type": "fix", "text": "Restored the missing permission scoped to the reports prefix and added an integration test that writes a canary object." }
+      ]
+    },
+    {
+      "key": "db-failover",
+      "title": "read replica failover storm during primary upgrade",
+      "company": "Globex",
+      "severity": "SEV-1",
+      "tags": ["database", "postgres"],
+      "sections": [
+        { "type": "impact", "text": "Write traffic was unavailable for 9 minutes and read latency tripled for an hour during the failover storm." },
+        { "type": "timeline", "text": "02:00 maintenance began. 02:04 primary demoted. 02:05 two replicas raced to promote. 02:13 quorum restored with a single primary." },
+        { "type": "rootcause", "text": "The failover orchestrator had a race condition triggered by overlapping health-check timeouts, promoting two replicas simultaneously." },
+        { "type": "fix", "text": "Patched the orchestrator to serialize promotions with a distributed lock and lengthened health-check timeouts during maintenance." }
+      ]
+    },
+    {
+      "key": "feature-flag",
+      "title": "checkout regression from stale feature flag cleanup",
+      "company": "Initech",
+      "severity": "SEV-2",
+      "tags": ["feature-flags", "payments"],
+      "sections": [
+        { "type": "impact", "text": "Gift card payments failed for 4 hours after a flag cleanup deploy removed a code path still in use." },
+        { "type": "rootcause", "text": "The cleanup assumed the legacy gift card flow was fully migrated, but 7% of traffic still depended on the old flag branch." },
+        { "type": "fix", "text": "Restored the legacy branch behind the flag, added traffic analytics to the flag dashboard, and blocked cleanup of flags with live traffic." }
+      ]
+    }
+  ]
+}

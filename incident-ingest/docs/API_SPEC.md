@@ -1,6 +1,6 @@
 # API Spec
 
-> **Last updated:** 2026-05-13
+> **Last updated:** 2026-05-17
 > **Sprint 3 status:** All graph extraction and query endpoints shipped, QA-approved, and smoke-tested.
 > **Sprint 4 status:** All evaluation, citations-first Q&A, auth/rate limits, and audit logs shipped and verified.
 
@@ -21,18 +21,29 @@ GET /health
 POST /ingest/upload
   Content-Type: multipart/form-data
   Authorization: Bearer <token>   (required when ADMIN_TOKEN set; omit in dev)
-  Body: file=<txt|md file>
+  Body:
+    file=<txt|md file>             legacy single-file field
+    files=<txt|md file>[]          batch field, default max 20 files
 
 → 202 {
-    jobId: "<uuid>",          // poll with GET /jobs/:jobId
-    documentId: "<uuid>",
-    bullmqJobId: "<string>",
-    pollUrl: "/jobs/<uuid>"
+    accepted: 1,
+    uploads: [
+      {
+        fileName: "incident.txt",
+        jobId: "<uuid>",
+        documentId: "<uuid>",
+        bullmqJobId: "<string>",
+        pollUrl: "/jobs/<uuid>"
+      }
+    ],
+    jobId: "<uuid>",          // top-level fields remain for single-file clients
+    documentId: "<uuid>"
   }
 
 Errors:
-  400  Missing file / empty file / unsupported MIME type (only txt + md accepted)
+  400  Missing files / empty file / unsupported MIME type / unexpected file field
   401  ADMIN_TOKEN set but Authorization header missing or wrong
+  413  File exceeds 10MB or batch exceeds MAX_UPLOAD_FILES
   500  DB or queue failure
 ```
 
@@ -170,7 +181,7 @@ Errors:
 Graph extraction runs after incident section parsing and embedding indexing in both supported ingest paths:
 
 - `POST /ingest/manual` parses submitted `rawText`, stores sections, indexes embeddings, then calls graph extraction before returning the incident.
-- `POST /ingest/upload` enqueues worker parsing; the worker stores the incident and sections, indexes embeddings, then calls graph extraction before marking the job complete.
+- `POST /ingest/upload` accepts either one legacy `file` field or a `files` batch. Each accepted file creates its own document and worker job; the worker stores the incident and sections, indexes embeddings, then calls graph extraction before marking that job complete.
 
 Shipped node types are `service`, `symptom`, `root_cause`, and `fix`. Shipped relationship types are `AFFECTS`, `HAS_SYMPTOM`, `CAUSED_BY`, and `RESOLVED_BY`. Every graph edge includes `evidence_section_id`; clients use that section ID with `GET /incidents/:id` to build anchors shaped as `#section-{section.type}-{section.id}`.
 
@@ -379,7 +390,8 @@ GET /eval/latest
     "retrievalConfig": {
       "searchLimit": 10,
       "evidenceSectionLimit": 8,
-      "embeddingModel": "text-embedding-3-small"
+      "embeddingModel": "deterministic-hash-v1 | BAAI/bge-small-en-v1.5 | bge-m3",
+      "retrievalBackend": "pgvector | turboquant | hybrid"
     },
     "graphConfig": {
       "enabled": true,
@@ -387,7 +399,7 @@ GET /eval/latest
     },
     "promptVersion": "qa-v1",
     "models": [
-      { "provider": "openai", "model": "<model>", "version": "<version|null>" }
+      { "provider": "local | ollama", "model": "<model>", "version": "<version|null>" }
     ],
     "metrics": {},
     "thresholds": {},
@@ -439,15 +451,30 @@ POST /qa
       }
     ],
     "evidenceCount": 3,
-    "promptVersion": "qa-v1",
+    "promptVersion": "qa-v1 | qa-v2-ollama",
     "model": {
-      "provider": "openai",
-      "name": "<model>",
+      "provider": "local | ollama",
+      "name": "extractive-citation-v1 | qwen3:4b",
       "version": "<version|null>"
     },
     "auditId": "<uuid>"
   }
 ```
+
+Generation providers (open-source stack — no Anthropic / no OpenAI):
+- `QA_PROVIDER=local` (default): deterministic extractive answers built from the
+  top cited sections (`model.provider: "local"`, `promptVersion: "qa-v1"`).
+- `QA_PROVIDER=ollama`: Qwen3-4B-Instruct generates a grounded answer from the
+  retrieved evidence only (`promptVersion: "qa-v2-ollama"`). Citations are
+  re-validated after generation; invalid output degrades to the extractive
+  answer, then to refusal. See docs/OPEN_SOURCE_RAG_STACK.md.
+
+Retrieval debug traces (eval mode):
+- With `options.mode: "eval"`, answered responses include
+  `debug.retrieval` (backend, embedding provider, reranker, candidate count)
+  and `debug.retrievalTraces[]` — per-chunk
+  `{ backend, keywordRank, keywordScore, vectorRank, vectorScore, turboquantRank, turboquantScore, fusedScore, rerankScore }`.
+- `GET /search?debug=1` adds an equivalent additive `trace` object per result.
 
 Citation rules:
 - `citations[]` must contain only sections retrieved before generation.
@@ -471,7 +498,7 @@ Refusal response:
     "evidenceCount": 0,
     "promptVersion": "qa-v1",
     "model": {
-      "provider": "openai",
+      "provider": "local | ollama",
       "name": "<model>",
       "version": "<version|null>"
     },

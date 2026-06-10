@@ -9,6 +9,7 @@ import {
   type IncidentDetail as IncidentDetailType,
   type SimilarIncidentResult,
 } from "../lib/api";
+import Icon, { type IconName } from "../components/Icon";
 
 const NODE_TYPE_COLOR: Record<string, string> = {
   service: "var(--brand)",
@@ -25,29 +26,29 @@ const SECTION_ORDER = ["impact", "timeline", "rootcause", "fix"] as const;
 
 const SECTION_META: Record<
   string,
-  { label: string; icon: string; cls: string; color: string }
+  { label: string; icon: IconName; cls: string; color: string }
 > = {
   impact: {
     label: "Impact",
-    icon: "IM",
+    icon: "pulse",
     cls: "impact",
     color: "var(--danger)",
   },
   timeline: {
     label: "Timeline",
-    icon: "TL",
+    icon: "clock",
     cls: "timeline",
     color: "var(--info)",
   },
   rootcause: {
     label: "Root Cause",
-    icon: "RC",
+    icon: "search",
     cls: "rootcause",
     color: "var(--warning)",
   },
   fix: {
     label: "Mitigation / Fix",
-    icon: "FX",
+    icon: "wrench",
     cls: "fix",
     color: "var(--success)",
   },
@@ -76,7 +77,7 @@ function sortSections(sections: IncidentDetailType["sections"]) {
 function SectionPanel({ section }: { section: IncidentDetailType["sections"][0] }) {
   const meta = SECTION_META[section.type] ?? {
     label: section.type,
-    icon: "TX",
+    icon: "fileText" as IconName,
     cls: "impact",
     color: "var(--text-secondary)",
   };
@@ -84,7 +85,9 @@ function SectionPanel({ section }: { section: IncidentDetailType["sections"][0] 
   return (
     <div className="section-panel" id={`section-${section.type}-${section.id}`}>
       <div className="section-header">
-        <div className={`section-type-icon ${meta.cls}`}>{meta.icon}</div>
+        <div className={`section-type-icon ${meta.cls}`}>
+          <Icon name={meta.icon} size={15} />
+        </div>
         <div>
           <div className="section-type-label" style={{ color: meta.color }}>
             {meta.label}
@@ -122,10 +125,8 @@ function SimilarIncidentCard({ item }: { item: SimilarIncidentResult }) {
           <span
             className="badge"
             style={{
-              borderColor:
-                SECTION_META[item.matchedSections[0].type]?.color ?? "var(--border)",
-              color:
-                SECTION_META[item.matchedSections[0].type]?.color ?? "var(--text-secondary)",
+              borderColor: SECTION_META[item.matchedSections[0].type]?.color ?? "var(--border)",
+              color: SECTION_META[item.matchedSections[0].type]?.color ?? "var(--text-secondary)",
             }}
           >
             {item.matchedSections[0].type}
@@ -141,7 +142,7 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
   const company = incident.company;
 
   const sectionMap = useMemo(
-    () => new Map(incident.sections.map((s) => [s.id, s])),
+    () => new Map(incident.sections.map((section) => [section.id, section])),
     [incident.sections]
   );
 
@@ -167,36 +168,26 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
 
   return (
     <div className="card card-padded" id="graph-panel">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 10,
-        }}
-      >
-        <h2 style={{ fontSize: "0.9375rem" }}>Knowledge Graph</h2>
+      <div className="panel-heading">
+        <h2>Knowledge Graph</h2>
         <Link
-          to={
-            company
-              ? `/graph?service=${encodeURIComponent(company)}`
-              : "/graph"
-          }
-          style={{ fontSize: "0.75rem", color: "var(--brand)" }}
+          to={company ? `/graph?service=${encodeURIComponent(company)}` : "/graph"}
+          style={{ fontSize: "0.75rem", color: "var(--brand)", display: "inline-flex", alignItems: "center", gap: 6 }}
         >
-          Browse all →
+          Browse graph
+          <Icon name="arrowRight" size={14} />
         </Link>
       </div>
 
-      {isLoading && (
-        <div className="skeleton" style={{ height: 80, borderRadius: 10 }} />
-      )}
+      {isLoading && <div className="skeleton" style={{ height: 80, borderRadius: 10 }} />}
 
       {!isLoading && edges.length === 0 && (
         <div className="empty-state" style={{ padding: "16px 0" }}>
-          <div className="empty-state-icon">@</div>
+          <div className="empty-state-icon">
+            <Icon name="graph" size={26} />
+          </div>
           <p style={{ fontSize: "0.8125rem" }}>
-            No graph data yet — nodes are extracted as incidents are processed.
+            No graph data yet. Nodes are extracted as incidents move through processing.
           </p>
         </div>
       )}
@@ -204,8 +195,8 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
       {edges.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
           {edges.map((edge) => {
-            const fromNode = nodes.find((n) => n.id === edge.from);
-            const toNode = nodes.find((n) => n.id === edge.to);
+            const fromNode = nodes.find((node) => node.id === edge.from);
+            const toNode = nodes.find((node) => node.id === edge.to);
             const section = sectionMap.get(edge.evidence_section_id);
             return (
               <div
@@ -240,10 +231,14 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
                       marginLeft: "auto",
                       fontSize: "0.6875rem",
                       color: "var(--brand)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
                     }}
                     title={`Evidence: ${section.type}`}
                   >
-                    [{section.type}] ↑
+                    {section.type}
+                    <Icon name="arrowUp" size={12} />
                   </a>
                 )}
               </div>
@@ -258,14 +253,11 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
 export default function IncidentDetail() {
   const { id } = useParams<{ id: string }>();
 
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["incident", id],
     queryFn: () => getIncident(id!),
     enabled: Boolean(id),
+    retry: false,
   });
 
   const {
@@ -305,7 +297,7 @@ export default function IncidentDetail() {
     return (
       <div className="card card-padded fade-in">
         <div className="alert alert-error" style={{ marginBottom: 16 }}>
-          <span>!</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Incident not found.</strong> {error.message}
           </div>
@@ -331,6 +323,7 @@ export default function IncidentDetail() {
           id="back-to-incidents"
           style={{ fontSize: "0.8125rem", padding: "6px 14px" }}
         >
+          <Icon name="arrowRight" size={14} style={{ transform: "rotate(180deg)" }} />
           Back to incidents
         </Link>
       </div>
@@ -355,17 +348,7 @@ export default function IncidentDetail() {
             </div>
 
             {data.summaryText && (
-              <div
-                style={{
-                  padding: "16px 28px",
-                  borderBottom: "1px solid var(--border)",
-                  fontSize: "0.9375rem",
-                  color: "var(--text-secondary)",
-                  lineHeight: 1.7,
-                  background: "rgba(8,11,18,0.3)",
-                }}
-                id="incident-summary"
-              >
+              <div className="detail-summary" id="incident-summary">
                 <div
                   style={{
                     fontSize: "0.6875rem",
@@ -381,16 +364,7 @@ export default function IncidentDetail() {
               </div>
             )}
 
-            <div
-              style={{
-                padding: "12px 28px",
-                display: "flex",
-                gap: 14,
-                flexWrap: "wrap",
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-              }}
-            >
+            <div className="detail-footer">
               <span>
                 <code className="inline-code">{data.id}</code>
               </span>
@@ -403,7 +377,9 @@ export default function IncidentDetail() {
           {sections.length === 0 ? (
             <div className="card">
               <div className="empty-state" style={{ padding: "36px 0" }}>
-                <div className="empty-state-icon">TX</div>
+                <div className="empty-state-icon">
+                  <Icon name="fileText" size={28} />
+                </div>
                 <h3>No sections extracted</h3>
                 <p>This incident does not have structured section content yet.</p>
               </div>
@@ -419,7 +395,9 @@ export default function IncidentDetail() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card card-padded" id="similar-panel">
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 10 }}>Similar Incidents</h2>
+            <div className="panel-heading">
+              <h2>Similar Incidents</h2>
+            </div>
 
             {similarLoading && (
               <div className="similar-list">
@@ -431,14 +409,16 @@ export default function IncidentDetail() {
 
             {similarError instanceof Error && (
               <div className="alert alert-error">
-                <span>!</span>
+                <Icon name="alert" size={18} />
                 <div>{similarError.message}</div>
               </div>
             )}
 
             {!similarLoading && !(similarError instanceof Error) && similar.length === 0 && (
               <div className="empty-state" style={{ padding: "24px 0" }}>
-                <div className="empty-state-icon">~</div>
+                <div className="empty-state-icon">
+                  <Icon name="spark" size={28} />
+                </div>
                 <h3>No close matches yet</h3>
                 <p>Add more incidents to widen retrieval coverage.</p>
               </div>
@@ -455,11 +435,13 @@ export default function IncidentDetail() {
 
           {sections.length > 0 && (
             <div className="card card-padded" id="section-index">
-              <h2 style={{ fontSize: "0.9375rem", marginBottom: 10 }}>Section Index</h2>
+              <div className="panel-heading">
+                <h2>Section Index</h2>
+              </div>
               {sections.map((section) => {
                 const meta = SECTION_META[section.type] ?? {
                   label: section.type,
-                  icon: "TX",
+                  icon: "fileText" as IconName,
                 };
 
                 return (
@@ -477,7 +459,7 @@ export default function IncidentDetail() {
                       textDecoration: "none",
                     }}
                   >
-                    <span>{meta.icon}</span>
+                    <Icon name={meta.icon} size={14} />
                     <span>{meta.label}</span>
                     <span
                       style={{

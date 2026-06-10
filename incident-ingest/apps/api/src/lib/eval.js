@@ -2,16 +2,24 @@ import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { describeEmbeddingProvider, getRagConfig } from "@pkg/nlp";
 import { searchIncidents } from "./retrieval.js";
 
 const VALID_QUERY_TYPES = new Set(["search", "graph", "qa", "mixed"]);
 const VALID_MODES = new Set(["fixture", "live"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Open-source stack: the embedding model is env-driven (EMBEDDING_PROVIDER /
+// EMBEDDING_MODEL), defaulting to the deterministic local embedding.
 export const DEFAULT_RETRIEVAL_CONFIG = {
   searchLimit: 10,
   evidenceSectionLimit: 8,
-  embeddingModel: "text-embedding-3-small",
+  get embeddingModel() {
+    return describeEmbeddingProvider(getRagConfig()).model;
+  },
+  get retrievalBackend() {
+    return getRagConfig().retrieval.backend;
+  },
 };
 
 export const DEFAULT_GRAPH_CONFIG = {

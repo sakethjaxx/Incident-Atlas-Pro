@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Dashboard from "./routes/Dashboard";
@@ -10,15 +11,16 @@ import Qa from "./routes/Qa";
 import Eval from "./routes/Eval";
 import NotFound from "./routes/NotFound";
 import { getHealth } from "./lib/api";
+import Icon, { type IconName } from "./components/Icon";
 
 const NAV_ITEMS = [
-  { to: "/", icon: "[]", label: "Dashboard", exact: true },
-  { to: "/search", icon: "?", label: "Search", exact: false },
-  { to: "/incidents", icon: "#", label: "Incidents", exact: false },
-  { to: "/graph", icon: "@", label: "Knowledge Graph", exact: false },
-  { to: "/qa", icon: "Q", label: "Q&A", exact: false },
-  { to: "/eval", icon: "V", label: "Evaluations", exact: false },
-  { to: "/upload", icon: "+", label: "Manual Upload", exact: false },
+  { to: "/", icon: "dashboard" as IconName, label: "Command Center", exact: true },
+  { to: "/search", icon: "search" as IconName, label: "Search", exact: false },
+  { to: "/incidents", icon: "incidents" as IconName, label: "Incidents", exact: false },
+  { to: "/graph", icon: "graph" as IconName, label: "Knowledge Graph", exact: false },
+  { to: "/qa", icon: "qa" as IconName, label: "Q&A", exact: false },
+  { to: "/eval", icon: "eval" as IconName, label: "Evaluations", exact: false },
+  { to: "/upload", icon: "upload" as IconName, label: "Manual Upload", exact: false },
 ];
 
 function Breadcrumb() {
@@ -28,7 +30,7 @@ function Breadcrumb() {
   if (segments.length === 0) {
     return (
       <span className="topbar-breadcrumb">
-        <span>Dashboard</span>
+        <span>Command Center</span>
       </span>
     );
   }
@@ -57,6 +59,9 @@ function Breadcrumb() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
   const { data: health, isLoading: healthLoading } = useQuery({
     queryKey: ["health"],
     queryFn: getHealth,
@@ -65,23 +70,33 @@ export default function App() {
   });
 
   const apiStatus = healthLoading
-    ? { label: "Checking...", color: "var(--text-muted)", dot: "var(--text-muted)" }
+    ? { label: "Checking", color: "var(--text-secondary)", dot: "var(--text-secondary)" }
     : health?.ok
       ? { label: "API Live", color: "var(--brand)", dot: "var(--brand)" }
       : { label: "API Down", color: "var(--danger)", dot: "var(--danger)" };
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <div
+        className={`sidebar-overlay${mobileNavOpen ? " open" : ""}`}
+        onClick={() => setMobileNavOpen(false)}
+        aria-hidden={!mobileNavOpen}
+      />
+
+      <aside className={`sidebar${mobileNavOpen ? " open" : ""}`}>
         <NavLink to="/" className="sidebar-logo" style={{ textDecoration: "none" }}>
           <div className="sidebar-logo-icon">IA</div>
           <div>
             <div className="sidebar-logo-text">Incident Atlas</div>
-            <div className="sidebar-logo-sub">Pro · MVP</div>
+            <div className="sidebar-logo-sub">Pro - MVP</div>
           </div>
         </NavLink>
 
-        <nav className="sidebar-nav" aria-label="Main navigation">
+        <nav id="main-navigation" className="sidebar-nav" aria-label="Main navigation">
           <div className="sidebar-section-label">Navigation</div>
 
           {NAV_ITEMS.map((item) => (
@@ -91,38 +106,63 @@ export default function App() {
               end={item.exact}
               id={`nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
               className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+              onClick={() => setMobileNavOpen(false)}
             >
-              <span className="nav-item-icon">{item.icon}</span>
+              <span className="nav-item-icon">
+                <Icon name={item.icon} size={16} />
+              </span>
               {item.label}
             </NavLink>
           ))}
         </nav>
 
-        <div className="sidebar-footer">Sprint 4 · Evaluation & Q&A</div>
+        <div className="sidebar-footer">Sprint 4 - Evaluation and Q&A</div>
       </aside>
 
       <div className="main-content">
         <header className="topbar">
-          <Breadcrumb />
+          <div className="topbar-leading">
+            <button
+              type="button"
+              className="btn btn-secondary btn-icon mobile-menu-button"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              aria-label={mobileNavOpen ? "Close navigation" : "Open navigation"}
+              aria-expanded={mobileNavOpen}
+              aria-controls="main-navigation"
+            >
+              <Icon name={mobileNavOpen ? "close" : "menu"} size={18} />
+            </button>
+
+            <NavLink to="/" className="topbar-brand" style={{ textDecoration: "none" }}>
+              <div className="topbar-brand-mark">IA</div>
+              <span>Incident Atlas</span>
+            </NavLink>
+
+            <Breadcrumb />
+          </div>
+
           <div className="topbar-spacer" />
-          <span
-            className="badge"
-            style={{ borderColor: apiStatus.dot, color: apiStatus.color }}
-            title={`API at ${import.meta.env.VITE_API_URL || "http://localhost:3001"}`}
-          >
+
+          <div className="topbar-actions">
             <span
-              className={health?.ok ? "dot-pulse" : undefined}
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: apiStatus.dot,
-                display: "inline-block",
-                flexShrink: 0,
-              }}
-            />
-            {apiStatus.label}
-          </span>
+              className="badge api-status-badge"
+              style={{ borderColor: apiStatus.dot, color: apiStatus.color }}
+              title={`API at ${import.meta.env.VITE_API_URL || "http://localhost:3001"}`}
+            >
+              <span
+                className={health?.ok ? "dot-pulse" : undefined}
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: "50%",
+                  background: apiStatus.dot,
+                  display: "inline-block",
+                  flexShrink: 0,
+                }}
+              />
+              <span className="api-status-label">{apiStatus.label}</span>
+            </span>
+          </div>
         </header>
 
         <main id="main-content" className="page-content fade-in">

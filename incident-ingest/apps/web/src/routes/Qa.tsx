@@ -1,7 +1,8 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { postQa, type QaResponse, type QaCitation } from "../lib/api";
+import { postQa, type QaCitation } from "../lib/api";
+import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
   return Math.max(0, Math.min(99, Math.round(value * 100)));
@@ -44,9 +45,7 @@ function CitationCard({ citation }: { citation: QaCitation }) {
           </div>
         </div>
         <div className="search-score-stack">
-          <span className="badge badge-brand">
-            {formatPercent(citation.retrievalScore)}% match
-          </span>
+          <span className="badge badge-brand">{formatPercent(citation.retrievalScore)}% match</span>
         </div>
       </div>
 
@@ -87,13 +86,13 @@ export default function Qa() {
       question: question.trim(),
       filters: {
         company: company.trim() || undefined,
-        tags: tags.trim() ? tags.split(",").map(t => t.trim()) : undefined,
+        tags: tags.trim() ? tags.split(",").map((tag) => tag.trim()) : undefined,
       },
       options: {
         maxEvidenceSections: 8,
         includeGraphContext: true,
         mode: "answer",
-      }
+      },
     });
   }
 
@@ -106,15 +105,17 @@ export default function Qa() {
   return (
     <section className="fade-in">
       <div className="page-header">
-        <div>
-          <h1>Q&A</h1>
-          <p>Ask natural language questions backed by incident citations.</p>
+        <div className="page-header-title">
+          <h1>Q&amp;A</h1>
+          <p>Ask natural-language questions and get answers that stay anchored to incident citations.</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="search-form-panel">
         <div className="search-bar" style={{ marginBottom: 0 }}>
-          <span className="search-icon">Q</span>
+          <span className="search-icon">
+            <Icon name="qa" size={16} />
+          </span>
           <input
             id="qa-question"
             type="text"
@@ -126,38 +127,49 @@ export default function Qa() {
         </div>
 
         <div className="search-form-grid">
-          <input
-            className="form-input"
-            value={company}
-            onChange={(event) => setCompany(event.target.value)}
-            placeholder="Company"
-            aria-label="Filter by company"
-          />
-          <input
-            className="form-input"
-            value={tags}
-            onChange={(event) => setTags(event.target.value)}
-            placeholder="Tags (comma separated)"
-            aria-label="Filter by tags"
-            style={{ gridColumn: "span 2" }}
-          />
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="btn btn-primary"
-              type="submit"
-              disabled={!question.trim() || isPending}
-              style={{ flex: 1 }}
-            >
-              {isPending ? "Generating..." : "Ask"}
-            </button>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={handleClear}
-              style={{ flexShrink: 0 }}
-            >
-              Clear
-            </button>
+          <div className="field-stack">
+            <label htmlFor="qa-company">Company</label>
+            <input
+              id="qa-company"
+              className="form-input"
+              value={company}
+              onChange={(event) => setCompany(event.target.value)}
+              placeholder="Stripe"
+              aria-label="Filter by company"
+            />
+          </div>
+          <div className="field-stack field-span-2">
+            <label htmlFor="qa-tags">Tags</label>
+            <input
+              id="qa-tags"
+              className="form-input"
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="payments, database, failover"
+              aria-label="Filter by tags"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="qa-actions">Run</label>
+            <div id="qa-actions" style={{ display: "flex", gap: 8 }}>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={!question.trim() || isPending}
+                style={{ flex: 1 }}
+              >
+                <Icon name="spark" size={16} />
+                {isPending ? "Generating..." : "Ask"}
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={handleClear}
+                style={{ flexShrink: 0 }}
+              >
+                Clear
+              </button>
+            </div>
           </div>
         </div>
       </form>
@@ -165,9 +177,11 @@ export default function Qa() {
       {!data && !isPending && !error && (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">Q</div>
+            <div className="empty-state-icon">
+              <Icon name="qa" size={28} />
+            </div>
             <h3>Ask the incident memory</h3>
-            <p>Generated answers are strictly backed by incident evidence.</p>
+            <p>Generated answers stay grounded in retrieved evidence instead of improvising from thin air.</p>
           </div>
         </div>
       )}
@@ -181,7 +195,7 @@ export default function Qa() {
 
       {error instanceof Error && (
         <div className="alert alert-error">
-          <span>⚠️</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Generation failed.</strong> {error.message}
           </div>
@@ -192,7 +206,7 @@ export default function Qa() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {data.status === "refused" && data.refusal ? (
             <div className="alert alert-warning">
-              <span>⚠️</span>
+              <Icon name="alert" size={18} />
               <div>
                 <strong>Refused: {data.refusal.reasonCode}</strong>
                 <p>{data.refusal.message}</p>
@@ -201,7 +215,7 @@ export default function Qa() {
           ) : (
             <div className="card" style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6 }}>
               {data.answer}
-              <div style={{ marginTop: 16, fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", gap: 12 }}>
+              <div style={{ marginTop: 16, fontSize: "0.8rem", color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap" }}>
                 <span>Model: {data.model.name}</span>
                 <span>Prompt: {data.promptVersion}</span>
                 <span>Audit: {data.auditId.slice(0, 8)}...</span>

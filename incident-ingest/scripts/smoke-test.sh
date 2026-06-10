@@ -46,7 +46,7 @@ request_json() {
 }
 
 wait_for_incident() {
-  local job_id="$1"
+  local job_id="${1//$'\r'/}"
   local counter=0
   local status_resp
   local status
@@ -108,6 +108,34 @@ upload_file() {
   echo "$job_id"
 }
 
+upload_batch() {
+  local file_path_a="$1"
+  local file_path_b="$2"
+  local curl_file_path_a="$file_path_a"
+  local curl_file_path_b="$file_path_b"
+  local upload_resp
+  local job_count
+
+  if command -v cygpath >/dev/null 2>&1; then
+    curl_file_path_a="$(cygpath -w "$file_path_a")"
+    curl_file_path_b="$(cygpath -w "$file_path_b")"
+  fi
+
+  echo "==> Batch uploading $(basename "$file_path_a") and $(basename "$file_path_b")..." >&2
+  upload_resp=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/ingest/upload" \
+    -F "files=@$curl_file_path_a;type=text/plain" \
+    -F "files=@$curl_file_path_b;type=text/plain")
+  echo "$upload_resp" | jq . >&2
+
+  job_count=$(echo "$upload_resp" | jq '.uploads | length')
+  if [ "$job_count" -ne 2 ]; then
+    echo "Batch upload response did not include exactly two jobs." >&2
+    return 1
+  fi
+
+  echo "$upload_resp" | jq -r '.uploads[].jobId' | tr -d '\r'
+}
+
 echo "==> Checking if API is reachable..."
 if ! curl -fsS "$API_URL/health" > /dev/null; then
   echo "Booting stack (Docker)..."
@@ -144,11 +172,13 @@ The deploy caused database pool saturation and request timeouts.
 We rolled back, tuned the connection pool, and added deployment guards.
 EOF
 
-JOB_ID_A=$(upload_file "$TEST_FILE_A")
+mapfile -t BATCH_JOB_IDS < <(upload_batch "$TEST_FILE_A" "$TEST_FILE_B")
+JOB_ID_A="${BATCH_JOB_IDS[0]}"
+JOB_ID_B="${BATCH_JOB_IDS[1]}"
+
 INCIDENT_ID_A=$(wait_for_incident "$JOB_ID_A")
 echo "==> First incident processed: $INCIDENT_ID_A"
 
-JOB_ID_B=$(upload_file "$TEST_FILE_B")
 INCIDENT_ID_B=$(wait_for_incident "$JOB_ID_B")
 echo "==> Second incident processed: $INCIDENT_ID_B"
 

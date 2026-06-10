@@ -298,3 +298,40 @@ export {
   VALID_NODE_TYPES,
   VALID_REL_TYPES,
 } from "./graphExtract.js";
+
+// ─── Open-source RAG stack (providers, chunking, fusion, rerank, TurboQuant) ──
+
+export {
+  STORAGE_DIMENSIONS,
+  getRagConfig,
+  ollamaGenerate,
+  ollamaEmbed,
+  embedText,
+  embedTexts,
+  padToStorageDimensions,
+  describeEmbeddingProvider,
+  resetBgePipelineForTest,
+} from "./providers.js";
+
+export {
+  CHUNKING,
+  chunkText,
+  buildChunksForIncident,
+  buildChunkEmbeddingText,
+} from "./chunking.js";
+
+export { RRF_K, rrfFuse, buildRetrievalTrace } from "./fusion.js";
+
+export { tokenOverlapScore, rerankCandidates } from "./rerank.js";
+
+export {
+  rotateVector,
+  quantizeVector,
+  prepareQuery,
+  approxCosine,
+  scanCodes,
+  unpackCodes,
+  serializeQuantized,
+  deserializeQuantized,
+  compressedSizeBytes,
+} from "./turboquant.js";
