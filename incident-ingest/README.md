@@ -94,6 +94,8 @@ pnpm dev
 Local services:
 
 - API: `http://localhost:3001`
+
+
 - Web: `http://localhost:5173`
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
@@ -105,14 +107,14 @@ Web routes:
 - `/` dashboard
 - `/incidents` incident list
 - `/incidents/:id` incident detail
-- `/graph` knowledge graph patterns browser
+- `/graph` interactive knowledge graph patterns browser (force-directed)
 - `/upload` async single-file or batch upload with job status polling
+- `/search` hybrid search with context-aware smart filters and autocomplete
 
 API endpoints:
 
 - `GET /health` liveness check
 - `POST /ingest/upload` multipart txt/md upload(s) -> enqueue one parse job per file -> returns `{ accepted, uploads }`
-- `POST /ingest/manual` synchronous raw text ingest → returns full incident
 - `POST /ingest/:documentId` enqueue job for previously uploaded document
 - `GET /jobs/:jobId` poll async job status (rate-limited)
 - `GET /incidents` list incidents
