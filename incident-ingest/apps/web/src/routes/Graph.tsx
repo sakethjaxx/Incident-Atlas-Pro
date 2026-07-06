@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getGraphPatterns, getGraphNeighbors, type GraphNode, type GraphPattern } from "../lib/api";
+import { getGraphPatterns, getGraphNeighbors, type GraphNode, type GraphPattern, getMetadataNodes } from "../lib/api";
 import Icon from "../components/Icon";
 
 const NODE_TYPE_COLOR: Record<string, string> = {
@@ -177,6 +177,12 @@ export default function Graph() {
 
   const hasQuery = submitted !== null && (submitted.service.length > 0 || submitted.symptom.length > 0);
 
+  const { data: servicesData } = useQuery({ queryKey: ["metadata-nodes", "service"], queryFn: () => getMetadataNodes("service"), retry: false });
+  const { data: symptomsData } = useQuery({ queryKey: ["metadata-nodes", "symptom"], queryFn: () => getMetadataNodes("symptom"), retry: false });
+
+  const servicesList = servicesData ?? [];
+  const symptomsList = symptomsData ?? [];
+
   const { data, isLoading, error, isFetching } = useQuery({
     queryKey: ["graph", "patterns", submitted],
     queryFn: () =>
@@ -204,8 +210,8 @@ export default function Graph() {
     <section className="fade-in">
       <div className="page-header">
         <div className="page-header-title">
-          <h1>Knowledge Graph</h1>
-          <p>Browse recurring failure patterns extracted from structured incident sections.</p>
+          <h1>Patterns</h1>
+          <p>Find recurring services, symptoms, root causes, and fixes across incidents.</p>
         </div>
       </div>
 
@@ -220,7 +226,13 @@ export default function Graph() {
               onChange={(event) => setService(event.target.value)}
               placeholder="payment-api"
               aria-label="Filter by service"
+              list="graph-services-list"
             />
+            <datalist id="graph-services-list">
+              {servicesList.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
           <div className="field-stack">
             <label htmlFor="graph-symptom">Symptom</label>
@@ -231,7 +243,13 @@ export default function Graph() {
               onChange={(event) => setSymptom(event.target.value)}
               placeholder="high error rate"
               aria-label="Filter by symptom"
+              list="graph-symptoms-list"
             />
+            <datalist id="graph-symptoms-list">
+              {symptomsList.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
           <div className="field-stack">
             <label htmlFor="graph-submit">Run</label>
@@ -242,7 +260,7 @@ export default function Graph() {
               disabled={!service.trim() && !symptom.trim()}
             >
               <Icon name="graph" size={16} />
-              {isFetching ? "Searching..." : "Find Patterns"}
+              {isFetching ? "Searching..." : "Find patterns"}
             </button>
           </div>
         </div>
@@ -255,7 +273,7 @@ export default function Graph() {
               <Icon name="graph" size={28} />
             </div>
             <h3>Explore the knowledge graph</h3>
-            <p>Filter by service or symptom to uncover patterns that repeat across incidents.</p>
+            <p>Filter by service or symptom to find repeated incident patterns.</p>
           </div>
         </div>
       )}

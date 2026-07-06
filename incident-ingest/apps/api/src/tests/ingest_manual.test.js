@@ -51,7 +51,7 @@ describe("POST /ingest/manual", () => {
     const res = await request(app)
       .post("/ingest/manual")
       .set(AUTH)
-      .send({ title: "Sectioned Incident", rawText: SAMPLE_TEXT });
+      .send({ title: "Sectioned Incident", rawText: SAMPLE_TEXT, company: "Acme" });
 
     expect(res.status).toBe(201);
     const types = res.body.sections.map((s) => s.type);
@@ -64,7 +64,7 @@ describe("POST /ingest/manual", () => {
     const res = await request(app)
       .post("/ingest/manual")
       .set(AUTH)
-      .send({ title: "Summary Test", rawText: SAMPLE_TEXT });
+      .send({ title: "Summary Test", rawText: SAMPLE_TEXT, company: "Acme" });
 
     expect(res.status).toBe(201);
     expect(res.body.summaryText).toBeTruthy();
@@ -113,11 +113,21 @@ describe("POST /ingest/manual", () => {
     expect(res.body.error).toMatch(/rawText/);
   });
 
+  it("returns 400 when company is missing", async () => {
+    const res = await request(app)
+      .post("/ingest/manual")
+      .set(AUTH)
+      .send({ title: "No company", rawText: SAMPLE_TEXT });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/company/);
+  });
+
   it("returns 400 for invalid date", async () => {
     const res = await request(app)
       .post("/ingest/manual")
       .set(AUTH)
-      .send({ title: "Bad Date", rawText: SAMPLE_TEXT, date: "not-a-date" });
+      .send({ title: "Bad Date", rawText: SAMPLE_TEXT, company: "Acme", date: "not-a-date" });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/ISO-8601/);

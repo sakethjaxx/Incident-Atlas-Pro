@@ -110,6 +110,7 @@ export async function resolveRawText(doc) {
  */
 export async function processParseJob(job) {
   const { documentId } = job.data;
+  const metadata = job.data?.metadata ?? {};
 
   if (!documentId) {
     // Bad job data — don't retry
@@ -171,6 +172,7 @@ export async function processParseJob(job) {
       data: {
         documentId: doc.id,
         title: `Incident from doc ${doc.id.slice(0, 8)}`,
+        company: typeof metadata.company === "string" ? metadata.company.trim() : null,
         summaryText,
         sections: { create: sections },
       },

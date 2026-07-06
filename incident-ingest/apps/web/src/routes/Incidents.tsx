@@ -33,39 +33,41 @@ function IncidentRow({ incident }: { incident: Incident }) {
   const date = formatDate(incident.date);
 
   return (
-    <Link
-      id={`incident-${incident.id}`}
-      className="incident-row card"
-      to={`/incidents/${incident.id}`}
-      style={{ textDecoration: "none" }}
-    >
-      <div
-        className={`incident-sev-dot ${getSevDotClass(incident.severity)}`}
-        style={{ flexShrink: 0 }}
-        title={incident.severity || "Unknown severity"}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="incident-title">{incident.title}</div>
-        <div className="incident-meta">
-          {incident.company && <span>{incident.company}</span>}
-          {date && <span>{date}</span>}
-          {incident.tags && incident.tags.length > 0 && (
-            <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-              {incident.tags.slice(0, 3).map((tag) => (
-                <span key={tag} className="tag">
-                  {tag}
-                </span>
-              ))}
-            </span>
-          )}
-        </div>
-        {incident.summaryText && <div className="incident-summary">{incident.summaryText}</div>}
-      </div>
-      <div className="incident-row-aside">
-        {incident.severity && <span className={`badge ${getSeverityVariant(incident.severity)}`}>{incident.severity}</span>}
-        <Icon name="arrowRight" size={14} style={{ color: "var(--text-muted)" }} />
-      </div>
-    </Link>
+    <tr id={`incident-${incident.id}`} className="incident-table-row">
+      <td>
+        <Link className="incident-table-title" to={`/incidents/${incident.id}`}>
+          <span
+            className={`incident-sev-dot ${getSevDotClass(incident.severity)}`}
+            title={incident.severity || "Unknown severity"}
+          />
+          <span>
+            <span className="incident-title">{incident.title}</span>
+            {incident.summaryText && <span className="incident-summary">{incident.summaryText}</span>}
+          </span>
+        </Link>
+      </td>
+      <td>{incident.company || "-"}</td>
+      <td>{incident.severity ? <span className={`badge ${getSeverityVariant(incident.severity)}`}>{incident.severity}</span> : "-"}</td>
+      <td>{date || "-"}</td>
+      <td>
+        {incident.tags && incident.tags.length > 0 ? (
+          <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {incident.tags.slice(0, 3).map((tag) => (
+              <span key={tag} className="tag">
+                {tag}
+              </span>
+            ))}
+          </span>
+        ) : (
+          "-"
+        )}
+      </td>
+      <td className="incident-table-open">
+        <Link to={`/incidents/${incident.id}`} aria-label={`Open ${incident.title}`}>
+          <Icon name="arrowRight" size={14} />
+        </Link>
+      </td>
+    </tr>
   );
 }
 
@@ -107,12 +109,12 @@ export default function Incidents() {
         <div className="page-header-row">
           <div className="page-header-title">
             <h1>Incidents</h1>
-            <p>Browse and filter the incident archive without leaving the operational workflow.</p>
+            <p>Browse and filter the incident archive.</p>
           </div>
           <div className="page-header-actions">
             <Link className="btn btn-primary" to="/upload" id="upload-new-btn">
               <Icon name="upload" size={16} />
-              Upload New
+              Upload
             </Link>
           </div>
         </div>
@@ -203,10 +205,24 @@ export default function Incidents() {
       )}
 
       {filtered.length > 0 && (
-        <div className="incident-list" id="incident-list">
-          {filtered.map((incident) => (
-            <IncidentRow key={incident.id} incident={incident} />
-          ))}
+        <div className="card table-card" id="incident-list">
+          <table className="data-table incident-table">
+            <thead>
+              <tr>
+                <th>Incident</th>
+                <th>Company</th>
+                <th>Severity</th>
+                <th>Date</th>
+                <th>Tags</th>
+                <th aria-label="Open" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((incident) => (
+                <IncidentRow key={incident.id} incident={incident} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </section>

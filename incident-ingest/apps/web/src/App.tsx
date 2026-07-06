@@ -14,13 +14,13 @@ import { getHealth } from "./lib/api";
 import Icon, { type IconName } from "./components/Icon";
 
 const NAV_ITEMS = [
-  { to: "/", icon: "dashboard" as IconName, label: "Command Center", exact: true },
+  { to: "/", icon: "dashboard" as IconName, label: "Home", exact: true },
   { to: "/search", icon: "search" as IconName, label: "Search", exact: false },
   { to: "/incidents", icon: "incidents" as IconName, label: "Incidents", exact: false },
-  { to: "/graph", icon: "graph" as IconName, label: "Knowledge Graph", exact: false },
-  { to: "/qa", icon: "qa" as IconName, label: "Q&A", exact: false },
-  { to: "/eval", icon: "eval" as IconName, label: "Evaluations", exact: false },
-  { to: "/upload", icon: "upload" as IconName, label: "Manual Upload", exact: false },
+  { to: "/graph", icon: "graph" as IconName, label: "Patterns", exact: false },
+  { to: "/qa", icon: "qa" as IconName, label: "Ask", exact: false },
+  { to: "/upload", icon: "upload" as IconName, label: "Upload", exact: false },
+  { to: "/eval", icon: "eval" as IconName, label: "Quality", exact: false },
 ];
 
 function Breadcrumb() {
@@ -30,7 +30,7 @@ function Breadcrumb() {
   if (segments.length === 0) {
     return (
       <span className="topbar-breadcrumb">
-        <span>Command Center</span>
+        <span>Home</span>
       </span>
     );
   }
@@ -92,7 +92,7 @@ export default function App() {
           <div className="sidebar-logo-icon">IA</div>
           <div>
             <div className="sidebar-logo-text">Incident Atlas</div>
-            <div className="sidebar-logo-sub">Pro - MVP</div>
+            <div className="sidebar-logo-sub">Incident memory</div>
           </div>
         </NavLink>
 
@@ -116,7 +116,7 @@ export default function App() {
           ))}
         </nav>
 
-        <div className="sidebar-footer">Sprint 4 - Evaluation and Q&A</div>
+        <div className="sidebar-footer">Operational knowledge base</div>
       </aside>
 
       <div className="main-content">

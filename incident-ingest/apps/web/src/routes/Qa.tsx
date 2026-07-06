@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { postQa, type QaCitation } from "../lib/api";
+import { postQa, type QaCitation, type ScopeSource } from "../lib/api";
 import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
@@ -42,12 +42,20 @@ function CitationCard({ citation }: { citation: QaCitation }) {
           <div className="incident-meta">
             {citation.company && <span>{citation.company}</span>}
             {citation.date && <span>{formatDate(citation.date)}</span>}
+            {citation.sourceAccess && <span className="badge badge-info">{citation.sourceAccess.label}</span>}
           </div>
         </div>
         <div className="search-score-stack">
           <span className="badge badge-brand">{formatPercent(citation.retrievalScore)}% match</span>
         </div>
       </div>
+
+      {citation.sourceAccess && (
+        <div className="source-access-line">
+          <Icon name="checkCircle" size={14} />
+          <span>{citation.sourceAccess.accessReason}</span>
+        </div>
+      )}
 
       <div className="evidence-list">
         <div className="evidence-item">
@@ -71,8 +79,11 @@ function CitationCard({ citation }: { citation: QaCitation }) {
 
 export default function Qa() {
   const [question, setQuestion] = useState("");
+  const [scopeSource, setScopeSource] = useState<ScopeSource>("uploaded_documents");
   const [company, setCompany] = useState("");
   const [tags, setTags] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
 
   const { data, isPending, error, mutate } = useMutation({
     mutationFn: postQa,
@@ -84,9 +95,15 @@ export default function Qa() {
 
     mutate({
       question: question.trim(),
+      scope: {
+        source: scopeSource,
+        companies: company.trim() ? [company.trim()] : undefined,
+      },
       filters: {
         company: company.trim() || undefined,
         tags: tags.trim() ? tags.split(",").map((tag) => tag.trim()) : undefined,
+        from: from.trim() || undefined,
+        to: to.trim() || undefined,
       },
       options: {
         maxEvidenceSections: 8,
@@ -98,16 +115,19 @@ export default function Qa() {
 
   function handleClear() {
     setQuestion("");
+    setScopeSource("uploaded_documents");
     setCompany("");
     setTags("");
+    setFrom("");
+    setTo("");
   }
 
   return (
     <section className="fade-in">
       <div className="page-header">
         <div className="page-header-title">
-          <h1>Q&amp;A</h1>
-          <p>Ask natural-language questions and get answers that stay anchored to incident citations.</p>
+          <h1>Ask</h1>
+          <p>Ask a question about incident history and review the cited sources.</p>
         </div>
       </div>
 
@@ -126,6 +146,25 @@ export default function Qa() {
           />
         </div>
 
+        <div className="scope-segmented" aria-label="Answer source">
+          <button
+            type="button"
+            className={scopeSource === "uploaded_documents" ? "active" : ""}
+            onClick={() => setScopeSource("uploaded_documents")}
+          >
+            <Icon name="inbox" size={15} />
+            Uploaded documents
+          </button>
+          <button
+            type="button"
+            className={scopeSource === "public_web" ? "active" : ""}
+            onClick={() => setScopeSource("public_web")}
+          >
+            <Icon name="search" size={15} />
+            Public web
+          </button>
+        </div>
+
         <div className="search-form-grid">
           <div className="field-stack">
             <label htmlFor="qa-company">Company</label>
@@ -134,7 +173,7 @@ export default function Qa() {
               className="form-input"
               value={company}
               onChange={(event) => setCompany(event.target.value)}
-              placeholder="Stripe"
+              placeholder={scopeSource === "public_web" ? "Public company" : "Allowed company"}
               aria-label="Filter by company"
             />
           </div>
@@ -147,6 +186,28 @@ export default function Qa() {
               onChange={(event) => setTags(event.target.value)}
               placeholder="payments, database, failover"
               aria-label="Filter by tags"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="qa-from">From date</label>
+            <input
+              id="qa-from"
+              type="date"
+              className="form-input"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+              aria-label="Filter from date"
+            />
+          </div>
+          <div className="field-stack">
+            <label htmlFor="qa-to">To date</label>
+            <input
+              id="qa-to"
+              type="date"
+              className="form-input"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              aria-label="Filter to date"
             />
           </div>
           <div className="field-stack">
@@ -181,7 +242,7 @@ export default function Qa() {
               <Icon name="qa" size={28} />
             </div>
             <h3>Ask the incident memory</h3>
-            <p>Generated answers stay grounded in retrieved evidence instead of improvising from thin air.</p>
+            <p>Answers include citations from the incident archive.</p>
           </div>
         </div>
       )}
@@ -213,20 +274,41 @@ export default function Qa() {
               </div>
             </div>
           ) : (
-            <div className="card" style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6 }}>
-              {data.answer}
-              <div style={{ marginTop: 16, fontSize: "0.8rem", color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap" }}>
-                <span>Model: {data.model.name}</span>
-                <span>Prompt: {data.promptVersion}</span>
-                <span>Audit: {data.auditId.slice(0, 8)}...</span>
+            <>
+              {data.confidence !== undefined && data.confidence < 0.5 && (
+                <div className="alert alert-warning" style={{ marginBottom: 8 }}>
+                  <Icon name="alert" size={16} />
+                  <span>Low confidence ({formatPercent(data.confidence)}%) - answer may be incomplete. Verify with original sources.</span>
+                </div>
+              )}
+              <div className="card" style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6 }}>
+                {data.answer}
+                <div style={{ marginTop: 16, fontSize: "0.8rem", color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                  <span>Model: {data.model.name}</span>
+                  <span>Prompt: {data.promptVersion}</span>
+                  {data.scope && (
+                    <span>{data.scope.source === "public_web" ? "Public web" : "Uploaded documents"}</span>
+                  )}
+                  {data.confidence !== undefined && (
+                    <span
+                      style={{
+                        color: data.confidence >= 0.5 ? "var(--success)" : "var(--warning)",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Confidence: {formatPercent(data.confidence)}%
+                    </span>
+                  )}
+                  <span>Audit: {data.auditId.slice(0, 8)}...</span>
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           {data.citations && data.citations.length > 0 && (
             <div>
               <h3 style={{ fontSize: "1rem", marginBottom: 12, color: "var(--text-secondary)" }}>
-                Citations ({data.evidenceCount} evidence sections retrieved)
+                Sources ({data.evidenceCount} evidence sections retrieved)
               </h3>
               <div className="search-results-list">
                 {data.citations.map((citation) => (

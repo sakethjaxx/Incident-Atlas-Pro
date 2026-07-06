@@ -14,7 +14,7 @@ import {
   deserializeQuantized,
 } from "@pkg/nlp";
 
-const VECTOR_MATCH_THRESHOLD = 0.18;
+const VECTOR_MATCH_THRESHOLD = 0.25;
 const MAX_MATCHED_SECTIONS = 3;
 
 // ── TurboQuant code cache ─────────────────────────────────────────────────────
@@ -112,6 +112,7 @@ export function normalizeSearchParams(query) {
   const limit = clampInt(query.limit, 20, 1, 50);
   const filters = {
     company: stringParam(query.company ?? query.filter_company),
+    companies: stringListParam(query.companies ?? query.accessCompanies),
     severity: stringParam(query.severity ?? query.filter_severity),
     tag: stringParam(query.tag),
     from: dateParam(query.from),
@@ -581,7 +582,15 @@ function buildPrismaFilters(filters) {
   if (filters.from) date.gte = filters.from;
   if (filters.to) date.lte = filters.to;
   if (Object.keys(date).length > 0) and.push({ date });
-  if (filters.company) and.push({ company: { equals: filters.company, mode: "insensitive" } });
+  if (filters.company) {
+    and.push({ company: { equals: filters.company, mode: "insensitive" } });
+  } else if (Array.isArray(filters.companies) && filters.companies.length > 0) {
+    and.push({
+      OR: filters.companies.map((company) => ({
+        company: { equals: company, mode: "insensitive" },
+      })),
+    });
+  }
   if (filters.severity) and.push({ severity: { equals: filters.severity, mode: "insensitive" } });
   if (filters.tag) and.push({ tags: { has: filters.tag } });
 
@@ -602,6 +611,9 @@ function buildSqlFilters(filters, params) {
   if (filters.company) {
     params.push(filters.company);
     clauses.push(`lower(i."company") = lower($${params.length})`);
+  } else if (Array.isArray(filters.companies) && filters.companies.length > 0) {
+    params.push(filters.companies.map((company) => company.toLowerCase()));
+    clauses.push(`lower(i."company") = ANY($${params.length}::text[])`);
   }
   if (filters.severity) {
     params.push(filters.severity);
@@ -623,6 +635,17 @@ function clampInt(value, fallback, min, max) {
 
 function stringParam(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function stringListParam(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => stringListParam(item));
+  }
+  if (typeof value !== "string") return [];
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function dateParam(value) {
@@ -657,9 +680,20 @@ function compareIncidentDates(left, right) {
 
 function buildChunkSqlFilters(filters, params) {
   const clauses = ["TRUE"];
+  if (filters?.from) {
+    params.push(filters.from);
+    clauses.push(`c."incident_id" IN (SELECT "id" FROM "incidents" WHERE "date" >= $${params.length}::timestamp)`);
+  }
+  if (filters?.to) {
+    params.push(filters.to);
+    clauses.push(`c."incident_id" IN (SELECT "id" FROM "incidents" WHERE "date" <= $${params.length}::timestamp)`);
+  }
   if (filters?.company) {
     params.push(filters.company);
     clauses.push(`lower(c."company") = lower($${params.length})`);
+  } else if (Array.isArray(filters?.companies) && filters.companies.length > 0) {
+    params.push(filters.companies.map((company) => company.toLowerCase()));
+    clauses.push(`lower(c."company") = ANY($${params.length}::text[])`);
   }
   if (filters?.severity) {
     params.push(filters.severity);
@@ -678,7 +712,16 @@ function buildChunkSqlFilters(filters, params) {
 
 function buildChunkPrismaFilters(filters) {
   const where = {};
+  const incidentWhere = {};
+  if (filters?.from) incidentWhere.date = { ...incidentWhere.date, gte: filters.from };
+  if (filters?.to) incidentWhere.date = { ...incidentWhere.date, lte: filters.to };
+  if (Object.keys(incidentWhere).length > 0) where.incident = { date: incidentWhere.date };
   if (filters?.company) where.company = { equals: filters.company, mode: "insensitive" };
+  else if (Array.isArray(filters?.companies) && filters.companies.length > 0) {
+    where.OR = filters.companies.map((company) => ({
+      company: { equals: company, mode: "insensitive" },
+    }));
+  }
   if (filters?.severity) where.severity = { equals: filters.severity, mode: "insensitive" };
   if (filters?.tag) where.tags = { has: filters.tag };
   if (Array.isArray(filters?.incidentIds) && filters.incidentIds.length > 0) {
@@ -797,6 +840,16 @@ async function chunkTurboquantCandidates(client, queryVector, filters, limit, co
     entries = entries.filter((e) => {
       if (incidentIdSet && !incidentIdSet.has(e.incidentId)) return false;
       if (filters.company && e.company?.toLowerCase() !== filters.company.toLowerCase()) return false;
+      if (
+        !filters.company &&
+        Array.isArray(filters.companies) &&
+        filters.companies.length > 0
+      ) {
+        const allowedCompanies = new Set(
+          filters.companies.map((company) => company.toLowerCase())
+        );
+        if (!allowedCompanies.has(String(e.company ?? "").toLowerCase())) return false;
+      }
       if (filters.severity && e.severity?.toLowerCase() !== filters.severity.toLowerCase()) return false;
       if (filters.tag && !e.tags.includes(filters.tag)) return false;
       return true;
@@ -836,6 +889,23 @@ async function chunkTurboquantCandidates(client, queryVector, filters, limit, co
   }
 
   return { approx, verified };
+}
+
+/**
+ * Map question text to a SectionType intent for retrieval boosting.
+ * Order matters: "fix" before "cause" so "what fixed the issue" resolves correctly.
+ * Returns null when no intent is confidently detected.
+ *
+ * @param {string} question
+ * @returns {"fix"|"rootcause"|"impact"|"timeline"|null}
+ */
+function detectSectionIntent(question) {
+  const q = String(question ?? "").toLowerCase();
+  if (/\b(fix|prevent|implement|remediat|mitigat|resolv|going forward|after the incident|corrective|post-incident)\b/.test(q)) return "fix";
+  if (/\b(root.?cause|why|caus|trigger|led to|underlying|reason|what (went|happened))\b/.test(q)) return "rootcause";
+  if (/\b(impact|affect|outage|downtime|how long|duration|unavailabl|how many (user|customer|request))\b/.test(q)) return "impact";
+  if (/\b(when|timeline|sequence|what time|order of event|first detect)\b/.test(q)) return "timeline";
+  return null;
 }
 
 /**
@@ -926,7 +996,22 @@ export async function retrieveChunkEvidence(client, params) {
     });
     const rowsById = new Map(chunkRows.map((row) => [row.id, row]));
 
-    const rerankInput = pool
+    // Fix B: boost chunks whose sectionType matches the detected question intent
+    // (fix/rootcause/impact/timeline) by 1.2× fusedScore, then re-sort the pool.
+    // This promotes section-aligned chunks before the reranker sees them.
+    const intentType = detectSectionIntent(params.q);
+    const sortedPool = intentType
+      ? pool
+          .map((item) => {
+            const row = rowsById.get(item.id);
+            return row?.sectionType === intentType
+              ? { ...item, fusedScore: item.fusedScore * 1.2 }
+              : item;
+          })
+          .sort((a, b) => b.fusedScore - a.fusedScore)
+      : pool;
+
+    const rerankInput = sortedPool
       .filter((item) => rowsById.has(item.id))
       .map((item) => ({ id: item.id, text: rowsById.get(item.id).text }));
     const reranked = await rerankCandidates(params.q, rerankInput, { config });
@@ -935,10 +1020,10 @@ export async function retrieveChunkEvidence(client, params) {
     // Final order: rerank order when a reranker ran, fused order otherwise.
     const finalOrder =
       reranked.provider === "none"
-        ? pool.map((item) => item.id)
+        ? sortedPool.map((item) => item.id)
         : reranked.results.map((r) => r.id);
 
-    const fusedById = new Map(pool.map((item) => [item.id, item]));
+    const fusedById = new Map(sortedPool.map((item) => [item.id, item]));
     const evidence = [];
     const traces = [];
 

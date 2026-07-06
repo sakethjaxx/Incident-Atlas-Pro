@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { searchIncidents, type SearchResult } from "../lib/api";
+import { searchIncidents, type ScopeSource, type SearchResult, getMetadataCompanies, getMetadataTags, getMetadataSeverities } from "../lib/api";
 import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
@@ -56,21 +56,21 @@ function SearchResultCard({ result }: { result: SearchResult }) {
             {incident.company && <span>{incident.company}</span>}
             {incident.date && <span>{formatDate(incident.date)}</span>}
             {incident.severity && <span className="badge badge-warning">{incident.severity}</span>}
+            {result.sourceAccess && <span className="badge badge-info">{result.sourceAccess.label}</span>}
           </div>
         </div>
         <div className="search-score-stack">
           <span className="badge badge-brand">{formatPercent(result.score)} score</span>
-          {(result.keywordScore != null || result.vectorScore != null) && (
-            <span className="search-score-sub">
-              {result.keywordScore != null ? `${formatPercent(result.keywordScore)} kw` : null}
-              {result.keywordScore != null && result.vectorScore != null ? " / " : null}
-              {result.vectorScore != null ? `${formatPercent(result.vectorScore)} vec` : null}
-            </span>
-          )}
         </div>
       </div>
 
       {incident.summaryText && <div className="incident-summary">{incident.summaryText}</div>}
+      {result.sourceAccess && (
+        <div className="source-access-line">
+          <Icon name="checkCircle" size={14} />
+          <span>{result.sourceAccess.accessReason}</span>
+        </div>
+      )}
       <EvidenceList result={result} />
     </Link>
   );
@@ -78,6 +78,7 @@ function SearchResultCard({ result }: { result: SearchResult }) {
 
 export default function Search() {
   const [query, setQuery] = useState("");
+  const [scopeSource, setScopeSource] = useState<ScopeSource>("uploaded_documents");
   const [company, setCompany] = useState("");
   const [severity, setSeverity] = useState("");
   const [tag, setTag] = useState("");
@@ -85,6 +86,7 @@ export default function Search() {
   const [toDate, setToDate] = useState("");
   const [submitted, setSubmitted] = useState({
     q: "",
+    scopeSource: "uploaded_documents" as ScopeSource,
     company: "",
     severity: "",
     tag: "",
@@ -94,28 +96,52 @@ export default function Search() {
 
   const hasSubmittedQuery = submitted.q.trim().length > 0;
 
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
+  const { data: companiesData } = useQuery({ queryKey: ["metadata-companies"], queryFn: getMetadataCompanies, retry: false });
+  const { data: tagsData } = useQuery({ queryKey: ["metadata-tags"], queryFn: getMetadataTags, retry: false });
+  const { data: severitiesData } = useQuery({ queryKey: ["metadata-severities"], queryFn: getMetadataSeverities, retry: false });
+
+  const companiesList = companiesData ?? [];
+  const tagsList = tagsData ?? [];
+  const severitiesList = severitiesData?.length ? severitiesData : ["SEV-1", "SEV-2", "SEV-3", "SEV-4"];
+
+  const { data, isLoading, error, refetch, isFetching, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: ["search", submitted],
-    queryFn: () =>
+    initialPageParam: 1,
+    queryFn: ({ pageParam = 1 }) =>
       searchIncidents({
         q: submitted.q,
+        scope: {
+          source: submitted.scopeSource,
+          companies: submitted.company ? [submitted.company] : undefined,
+        },
         filterCompany: submitted.company || undefined,
         filterSeverity: submitted.severity || undefined,
         filterTag: submitted.tag || undefined,
         filterFrom: submitted.from ? new Date(`${submitted.from}T00:00:00`).toISOString() : undefined,
         filterTo: submitted.to ? new Date(`${submitted.to}T23:59:59`).toISOString() : undefined,
         limit: 20,
+        page: pageParam,
       }),
+    getNextPageParam: (lastPage) => {
+      if (lastPage.page * lastPage.limit < lastPage.total) {
+        return lastPage.page + 1;
+      }
+      return undefined;
+    },
     enabled: hasSubmittedQuery,
     retry: false,
   });
 
-  const results = useMemo(() => data?.results ?? [], [data]);
+  const results = useMemo(() => data?.pages.flatMap((p) => p.results) ?? [], [data]);
+  const totalResults = data?.pages[0]?.total ?? 0;
+  const publicWeb = data?.pages[0]?.publicWeb;
+  const responseScope = data?.pages[0]?.scope;
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitted({
       q: query.trim(),
+      scopeSource,
       company: company.trim(),
       severity: severity.trim(),
       tag: tag.trim(),
@@ -130,12 +156,12 @@ export default function Search() {
         <div className="page-header-row">
           <div className="page-header-title">
             <h1>Search</h1>
-            <p>Find past incidents and jump straight to the exact evidence that matches the symptom.</p>
+            <p>Find previous incidents by symptom, root cause, service, or fix.</p>
           </div>
           <div className="page-header-actions">
             <Link className="btn btn-secondary" to="/incidents">
               <Icon name="incidents" size={16} />
-              Browse Incidents
+              Incidents
             </Link>
           </div>
         </div>
@@ -149,11 +175,30 @@ export default function Search() {
           <input
             id="search-query"
             type="search"
-            placeholder="database timeout, cache stampede, deploy rollback..."
+            placeholder="database timeout, cache stampede, deploy rollback"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             aria-label="Search incidents"
           />
+        </div>
+
+        <div className="scope-segmented" aria-label="Search source">
+          <button
+            type="button"
+            className={scopeSource === "uploaded_documents" ? "active" : ""}
+            onClick={() => setScopeSource("uploaded_documents")}
+          >
+            <Icon name="inbox" size={15} />
+            Uploaded documents
+          </button>
+          <button
+            type="button"
+            className={scopeSource === "public_web" ? "active" : ""}
+            onClick={() => setScopeSource("public_web")}
+          >
+            <Icon name="search" size={15} />
+            Public web
+          </button>
         </div>
 
         <div className="search-form-grid">
@@ -164,9 +209,15 @@ export default function Search() {
               className="form-input"
               value={company}
               onChange={(event) => setCompany(event.target.value)}
-              placeholder="Stripe"
+              placeholder={scopeSource === "public_web" ? "Public company" : "Allowed company"}
               aria-label="Filter by company"
+              list="search-companies-list"
             />
+            <datalist id="search-companies-list">
+              {companiesList.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
           </div>
           <div className="field-stack">
             <label htmlFor="search-severity">Severity</label>
@@ -177,7 +228,13 @@ export default function Search() {
               onChange={(event) => setSeverity(event.target.value)}
               placeholder="SEV-1"
               aria-label="Filter by severity"
+              list="search-severities-list"
             />
+            <datalist id="search-severities-list">
+              {severitiesList.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
           </div>
           <div className="field-stack">
             <label htmlFor="search-tag">Tag</label>
@@ -188,7 +245,13 @@ export default function Search() {
               onChange={(event) => setTag(event.target.value)}
               placeholder="database"
               aria-label="Filter by tag"
+              list="search-tags-list"
             />
+            <datalist id="search-tags-list">
+              {tagsList.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
           </div>
           <div className="field-stack">
             <label htmlFor="search-from">From</label>
@@ -216,7 +279,7 @@ export default function Search() {
             <label htmlFor="search-submit">Run</label>
             <button id="search-submit" className="btn btn-primary" type="submit" disabled={!query.trim()}>
               <Icon name="search" size={16} />
-              {isFetching ? "Searching..." : "Run Search"}
+              {isFetching ? "Searching..." : "Search"}
             </button>
           </div>
         </div>
@@ -224,7 +287,18 @@ export default function Search() {
 
       {hasSubmittedQuery && !isLoading && !error && (
         <div className="search-summary-line">
-          {data?.total ?? 0} result{(data?.total ?? 0) === 1 ? "" : "s"} for "{submitted.q}"
+          {totalResults} result{totalResults === 1 ? "" : "s"} for "{submitted.q}"
+          {" - "}
+          {responseScope?.source === "public_web" ? "Public web" : "Uploaded documents"}
+        </div>
+      )}
+
+      {publicWeb && (
+        <div className="alert alert-info" style={{ marginBottom: 14 }}>
+          <Icon name="search" size={18} />
+          <div>
+            <strong>Public web unavailable.</strong> {publicWeb.message}
+          </div>
         </div>
       )}
 
@@ -235,7 +309,7 @@ export default function Search() {
               <Icon name="search" size={28} />
             </div>
             <h3>Search the incident memory</h3>
-            <p>Try a symptom, a failure mode, a service name, or the fix you remember.</p>
+            <p>Try a symptom, failure mode, service name, or fix.</p>
           </div>
         </div>
       )}
@@ -278,11 +352,24 @@ export default function Search() {
       )}
 
       {results.length > 0 && (
-        <div className="search-results-list">
-          {results.map((result) => (
-            <SearchResultCard key={result.incident.id} result={result} />
-          ))}
-        </div>
+        <>
+          <div className="search-results-list">
+            {results.map((result) => (
+              <SearchResultCard key={result.incident.id} result={result} />
+            ))}
+          </div>
+          {hasNextPage && (
+            <div style={{ marginTop: 24, textAlign: "center" }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage ? "Loading more..." : "Load More"}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );

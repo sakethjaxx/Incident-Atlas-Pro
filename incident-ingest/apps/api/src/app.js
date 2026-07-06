@@ -12,6 +12,7 @@ import { graphRouter } from "./routes/graph.js";
 import { evalRouter } from "./routes/eval.js";
 import { qaRouter } from "./routes/qa.js";
 import { jobsRouter } from "./routes/jobs.js";
+import { metadataRouter } from "./routes/metadata.js";
 
 // W4-H3: Restrict CORS to a known origin; override via CORS_ORIGIN in production.
 // (index.js had this fix; app.js — the file actually imported by server.js — did not.)
@@ -42,19 +43,28 @@ export function buildApp() {
   app.use(evalRouter);
   app.use(qaRouter);
   app.use(jobsRouter);
+  app.use(metadataRouter);
 
   // 404 handler
   app.use((_req, res) => {
     res.status(404).json({ error: "Not found" });
   });
 
-  // Global error handler
+  // Global error handler.
+  // SEC: In production, never forward raw error.message — it may contain Prisma
+  // column names, query fragments, or stack paths. Only surface client-safe messages
+  // (those explicitly set on the error object by route handlers).
   app.use((error, _req, res, _next) => {
     console.error("[error]", error);
     const status = error.status ?? 500;
-    return res
-      .status(status)
-      .json({ error: error.message ?? "Internal server error" });
+    const isClientError = status >= 400 && status < 500;
+    const message =
+      isClientError
+        ? (error.message ?? "Bad request")
+        : process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : (error.message ?? "Internal server error");
+    return res.status(status).json({ error: message });
   });
 
   return app;

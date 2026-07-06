@@ -397,6 +397,27 @@ export function getJobStatus(id: string): Promise<JobStatus> {
   return request<JobStatus>(`/jobs/${id}`);
 }
 
+/** GET /metadata/companies — get unique list of companies */
+export function getMetadataCompanies(): Promise<string[]> {
+  return request<string[]>("/metadata/companies");
+}
+
+/** GET /metadata/severities — get unique list of severities */
+export function getMetadataSeverities(): Promise<string[]> {
+  return request<string[]>("/metadata/severities");
+}
+
+/** GET /metadata/tags — get unique list of tags */
+export function getMetadataTags(): Promise<string[]> {
+  return request<string[]>("/metadata/tags");
+}
+
+/** GET /metadata/nodes — get unique list of graph node names */
+export function getMetadataNodes(type?: string): Promise<string[]> {
+  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  return request<string[]>(`/metadata/nodes${qs}`);
+}
+
 /**
  * GET /search?q=…&company=…&severity=…&tag=…&page=…&limit=…
  * Hybrid FTS + vector search. Returns scored results with evidence snippets.

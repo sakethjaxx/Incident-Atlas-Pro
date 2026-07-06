@@ -194,7 +194,14 @@ async function getBgePipeline(model) {
           );
         }
       }
-      return transformers.pipeline("feature-extraction", model, { dtype: "q8" });
+      // Try quantized first (smaller, faster); fall back to full fp32 model if
+      // the quantized ONNX file is not available for the chosen model.
+      try {
+        return await transformers.pipeline("feature-extraction", model, { dtype: "q8" });
+      } catch (e) {
+        if (!String(e?.message ?? "").includes("locate file")) throw e;
+        return await transformers.pipeline("feature-extraction", model, { dtype: "fp32" });
+      }
     })();
   }
   return _bgePipelinePromise;

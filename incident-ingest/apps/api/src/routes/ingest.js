@@ -66,10 +66,10 @@ export function setParseQueueForTest(queue) {
   _parseQueue = queue;
 }
 
-function enqueueParseJob(documentId, jobId) {
+function enqueueParseJob(documentId, jobId, metadata = {}) {
   return getParseQueue().add(
     "parse",
-    { documentId },
+    { documentId, metadata },
     {
       jobId,
       attempts: 3,
@@ -126,6 +126,13 @@ ingestRouter.post(
       const uploadedFiles = getUploadedFiles(req);
       if (uploadedFiles.length === 0) {
         return res.status(400).json({ error: "No files uploaded" });
+      }
+      const company = typeof req.body?.company === "string" ? req.body.company.trim() : "";
+      if (!company) {
+        return res.status(400).json({ error: "company is required" });
+      }
+      if (company.length > MAX_COMPANY_LENGTH) {
+        return res.status(400).json({ error: `company must be ${MAX_COMPANY_LENGTH} characters or fewer` });
       }
 
       const preparedFiles = [];
@@ -193,7 +200,10 @@ ingestRouter.post(
 
         let bullJob;
         try {
-          bullJob = await enqueueParseJob(doc.id, doc.ingestJob.id);
+          bullJob = await enqueueParseJob(doc.id, doc.ingestJob.id, {
+            company,
+            visibility: "company_private",
+          });
         } catch (queueError) {
           await prisma.document
             .updateMany({ where: { id: doc.id }, data: { parseStatus: "failed" } })
@@ -241,6 +251,12 @@ ingestRouter.post(
  * Body: { title: string, rawText: string, company?: string, date?: string,
  *         severity?: string, tags?: string[], sourceUrl?: string, products?: string[] }
  */
+// Input limits — keep in sync with API_SPEC.md
+const MAX_RAW_TEXT_BYTES = 100 * 1024; // 100 KB: prevents CPU-exhaustion in section parser
+const MAX_TITLE_LENGTH = 500;
+const MAX_COMPANY_LENGTH = 200;
+const URL_RE = /^https?:\/\/.{1,2000}$/i;
+
 ingestRouter.post(
   "/ingest/manual",
   requireAdmin,
@@ -253,8 +269,26 @@ ingestRouter.post(
       if (!title || typeof title !== "string") {
         return res.status(400).json({ error: "title is required" });
       }
+      if (title.length > MAX_TITLE_LENGTH) {
+        return res.status(400).json({ error: `title must be ${MAX_TITLE_LENGTH} characters or fewer` });
+      }
       if (!rawText || typeof rawText !== "string") {
         return res.status(400).json({ error: "rawText is required" });
+      }
+      if (typeof company !== "string" || !company.trim()) {
+        return res.status(400).json({ error: "company is required" });
+      }
+      // SEC: cap rawText to prevent CPU-exhaustion in the section parser
+      if (Buffer.byteLength(rawText, "utf8") > MAX_RAW_TEXT_BYTES) {
+        return res.status(400).json({ error: `rawText exceeds maximum size of ${MAX_RAW_TEXT_BYTES / 1024} KB` });
+      }
+      if (typeof company === "string" && company.length > MAX_COMPANY_LENGTH) {
+        return res.status(400).json({ error: `company must be ${MAX_COMPANY_LENGTH} characters or fewer` });
+      }
+      if (sourceUrl !== undefined && sourceUrl !== null && sourceUrl !== "") {
+        if (typeof sourceUrl !== "string" || !URL_RE.test(sourceUrl)) {
+          return res.status(400).json({ error: "sourceUrl must be a valid http/https URL" });
+        }
       }
 
       let parsedDate = null;
@@ -272,7 +306,7 @@ ingestRouter.post(
       const incident = await prisma.incident.create({
         data: {
           title: title.trim(),
-          company: typeof company === "string" ? company.trim() : null,
+          company: company.trim(),
           date: parsedDate,
           severity: typeof severity === "string" ? severity.trim() : null,
           tags: Array.isArray(tags) ? tags : [],
@@ -334,7 +368,12 @@ ingestRouter.post(
           .json({ error: "Ingestion already in progress for this document" });
       }
 
-      const bullJob = await enqueueParseJob(documentId, doc.ingestJob.id);
+      const company = typeof req.body?.company === "string" ? req.body.company.trim() : "";
+      const bullJob = await enqueueParseJob(
+        documentId,
+        doc.ingestJob.id,
+        company ? { company, visibility: "company_private" } : {}
+      );
 
       return res.status(202).json({
         message: "Job enqueued",

@@ -1,6 +1,13 @@
 import { tokenizeForRetrieval, getRagConfig } from "@pkg/nlp";
 import { searchIncidents, retrieveChunkEvidence } from "./retrieval.js";
 import {
+  DOCUMENT_SCOPE_SOURCE,
+  PUBLIC_WEB_SCOPE_SOURCE,
+  applyDocumentAccessScope,
+  normalizeAccessScope,
+  publicWebUnavailablePayload,
+} from "./accessScope.js";
+import {
   getQaModel,
   tryOllamaAnswer,
   QA_PROMPT_VERSION_LOCAL,
@@ -24,14 +31,46 @@ const MAX_CITED_SECTIONS = 3;
 const MIN_STRONG_SECTION_SCORE = 0.25;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Questions clearly outside the incident postmortem domain.
+const OUT_OF_SCOPE_PATTERNS = [
+  // Code/script generation requests
+  /^(write|create|generate|produce|make me|give me)\s+(a\s+)?(bash|shell|python|javascript|typescript|sql|go|rust|java|ruby|php|c\+\+|powershell)\s+(script|program|function|code|command|snippet)\b/i,
+  /^(write|create|generate)\s+(me\s+)?(a\s+)?(script|program|code)\s+(that|to|which|for)\b/i,
+  // Weather / environmental forecast queries
+  /\bweather (forecast|today|tomorrow|this week|this weekend|report)\b|\bforecast for\b|\bwill it rain\b/i,
+  // Biographical leadership questions about people (not about incident handling)
+  /\bwho (is|was|are|were) (the |a |an )?(ceo|cto|coo|cfo|founder|president|vice.?president|chairman|board member|director)\b/i,
+  // Financial market data
+  /\b(stock price|share price|market cap|nasdaq|nyse|trading at|stock market|ipo price)\b/i,
+];
+
+function isOutOfScopeRequest(question) {
+  const q = String(question ?? "").trimStart();
+  return OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(q));
+}
+
 const UNSAFE_PATTERNS = [
-  /ignore (all )?(previous|prior|above) (instructions|rules)/i,
+  // Word-order-agnostic: any "ignore ... instructions/rules/prompt/context" phrasing.
+  // Previous regex required (previous|prior|above)? before (your)? which missed
+  // "Ignore your previous instructions" because "your" precedes the optional word.
+  /\bignore\b.{0,40}\b(instructions?|rules?|context|prompt)\b/i,
   /system prompt/i,
   /developer message/i,
   /jailbreak/i,
   /do not cite/i,
   /without citations?/i,
-  /forget (the )?(rules|instructions)/i,
+  /forget\b.{0,30}\b(rules?|instructions?|context)\b/i,
+  /pretend (you are|to be) (a different|an? (unrestricted|unfiltered|uncensored))/i,
+  /answer (freely|without restriction)/i,
+  /bypass (the )?(safety|filter|restriction|rule|instruction)/i,
+  /override (your )?(instruction|rule|guideline)/i,
+  /how (to|do you) (hack|exploit|attack|breach|compromise)\b/i,
+  /inject(ion)? (attack|payload|sql|xss|prompt)/i,
+  // Additional jailbreak variants not covered by above
+  /you (are|have) no restrictions?\b/i,
+  /act as (an? )?(unrestricted|unfiltered|uncensored|different|new|another)/i,
+  /disregard (your )?(previous|prior|all)? ?(instructions?|rules?|guidelines?)/i,
+  /new (persona|role|identity|character).*no (restrictions?|limits?|rules?)/i,
 ];
 
 export class QaValidationError extends Error {
@@ -46,12 +85,32 @@ export async function answerQuestion(client, body) {
   const request = validateQaRequest(body);
   const config = getRagConfig();
 
+  if (request.scope.source === PUBLIC_WEB_SCOPE_SOURCE) {
+    return buildRefusal({
+      reasonCode: "public_web_unavailable",
+      message:
+        "Public web research is separate from uploaded company documents and is not configured on this deployment.",
+      evidenceCount: 0,
+      scope: request.scope,
+      debug: request.mode === "eval" ? publicWebUnavailablePayload(request.scope) : null,
+    });
+  }
+
   if (hasUnsafePromptText(request.question)) {
     return buildRefusal({
       reasonCode: "unsafe_prompt",
       message: "I cannot follow instructions that try to bypass citation requirements.",
       evidenceCount: 0,
       debug: request.mode === "eval" ? { unsafePrompt: true } : null,
+    });
+  }
+
+  if (isOutOfScopeRequest(request.question)) {
+    return buildRefusal({
+      reasonCode: "unsupported_scope",
+      message: "I only answer questions grounded in incident postmortem evidence. Code generation is outside my scope.",
+      evidenceCount: 0,
+      debug: request.mode === "eval" ? { outOfScope: true } : null,
     });
   }
 
@@ -82,7 +141,7 @@ export async function answerQuestion(client, body) {
   const contextSize =
     config.qa.provider === "ollama" ? OLLAMA_CONTEXT_CHUNKS : MAX_CITED_SECTIONS;
   const selectedEvidence = gate.evidence.slice(0, contextSize);
-  const citations = selectedEvidence.map((item, index) => toCitation(item, index));
+  const citations = selectedEvidence.map((item, index) => toCitation(item, index, request.scope));
 
   // Generation: optional Ollama/Qwen path, deterministic extractive fallback.
   let answer = null;
@@ -120,7 +179,7 @@ export async function answerQuestion(client, body) {
   }
 
   if (!answer) {
-    answer = buildExtractiveAnswer(citations.slice(0, MAX_CITED_SECTIONS));
+    answer = buildExtractiveAnswer(citations.slice(0, MAX_CITED_SECTIONS), request.question);
   }
 
   const validation = validateAnswerCitations(answer, citations, selectedEvidence);
@@ -142,6 +201,10 @@ export async function answerQuestion(client, body) {
     evidenceCount: retrieval.evidence.length,
     confidence: calculateConfidence(selectedEvidence),
     sourceIncidents,
+    scope: {
+      ...request.scope,
+      source: DOCUMENT_SCOPE_SOURCE,
+    },
     promptVersion,
     model,
     audit: {
@@ -174,25 +237,31 @@ export function validateQaRequest(body) {
   }
 
   const filters = validateFilters(body.filters ?? {});
+  const scope = normalizeAccessScope(body.scope ?? {}, filters.company);
   const options = validateOptions(body.options ?? {});
   return {
     question,
     filters,
+    scope,
     ...options,
   };
 }
 
 export async function retrieveEvidence(client, request, config = getRagConfig()) {
+  const scopedFilters = applyDocumentAccessScope(request.filters, request.scope);
   // Sprint 5 path: chunk-level hybrid retrieval (filters → FTS+vector → RRF →
   // rerank). Falls back to the legacy section-level path when the chunk index
   // is empty or unavailable, so pre-chunk deployments keep working unchanged.
   const chunkResult = await retrieveChunkEvidence(client, {
     q: request.question,
     filters: {
-      company: request.filters.company,
+      company: scopedFilters.company,
+      companies: scopedFilters.companies,
       severity: null,
-      tag: request.filters.tags[0] ?? null,
-      incidentIds: request.filters.incidentIds,
+      tag: scopedFilters.tags[0] ?? null,
+      incidentIds: scopedFilters.incidentIds,
+      from: scopedFilters.from ?? null,
+      to: scopedFilters.to ?? null,
     },
     limit: Math.max(request.maxEvidenceSections, 8),
     debug: request.mode === "eval",
@@ -203,7 +272,7 @@ export async function retrieveEvidence(client, request, config = getRagConfig())
     const evidence = chunkResult.evidence.filter((item) =>
       matchesPostFilters(
         { id: item.incidentId, company: item.company, tags: item.tags },
-        request.filters
+        scopedFilters
       )
     );
 
@@ -225,17 +294,19 @@ export async function retrieveEvidence(client, request, config = getRagConfig())
 }
 
 async function retrieveLegacySectionEvidence(client, request) {
+  const scopedFilters = applyDocumentAccessScope(request.filters, request.scope);
   const searchResult = await searchIncidents(client, {
     q: request.question,
     page: 1,
     limit: SEARCH_LIMIT,
     skip: 0,
     filters: {
-      company: request.filters.company,
+      company: scopedFilters.company,
+      companies: scopedFilters.companies,
       severity: null,
-      tag: request.filters.tags[0] ?? null,
-      from: null,
-      to: null,
+      tag: scopedFilters.tags[0] ?? null,
+      from: scopedFilters.from ?? null,
+      to: scopedFilters.to ?? null,
     },
   });
 
@@ -244,7 +315,7 @@ async function retrieveLegacySectionEvidence(client, request) {
   for (const item of searchResult.data ?? []) {
     const incident = item.incident ?? item;
     if (!incident?.id) continue;
-    if (!matchesPostFilters(incident, request.filters)) continue;
+    if (!matchesPostFilters(incident, scopedFilters)) continue;
     incidentsById.set(incident.id, incident);
 
     for (const section of item.matchedSections ?? item.sections ?? []) {
@@ -282,7 +353,21 @@ function validateFilters(filters) {
       ? []
       : arrayOfUuids(filters.incidentIds, "filters.incidentIds");
 
-  return { company, tags, incidentIds };
+  const from = parseOptionalDate(filters.from, "filters.from");
+  const to = parseOptionalDate(filters.to, "filters.to");
+  if (from && to && from > to) {
+    throw new QaValidationError("filters.from must be before filters.to");
+  }
+
+  return { company, tags, incidentIds, from, to };
+}
+
+function parseOptionalDate(value, fieldName) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") throw new QaValidationError(`${fieldName} must be an ISO-8601 date string`);
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) throw new QaValidationError(`${fieldName} must be a valid ISO-8601 date`);
+  return d;
 }
 
 function validateOptions(options) {
@@ -385,7 +470,10 @@ function detectIntent(question) {
   if (/\b(impact|affected|outage|customer|user|effect)\b/.test(q)) {
     return { sectionType: "impact" };
   }
-  if (/\b(when|timeline|during|after|before|sequence)\b/.test(q)) {
+  // "after"/"before" are prepositions used in many non-timeline contexts
+  // ("improvements after the incident", "before deploying") — only require a
+  // timeline section when an unambiguously temporal keyword is present.
+  if (/\b(when|at what time|timeline|sequence of events|order of events|what time)\b/.test(q)) {
     return { sectionType: "timeline" };
   }
   return { sectionType: null };
@@ -399,13 +487,36 @@ function insufficient(reasonCode, message, debug = null) {
   return { ok: false, reasonCode, message, debug };
 }
 
-function buildExtractiveAnswer(citations) {
+function buildExtractiveAnswer(citations, questionText = "") {
+  const qTokens = new Set(tokenizeForRetrieval(questionText));
   return citations
     .map((citation) => {
-      const sentence = stripTrailingSentencePunctuation(firstSentence(citation.excerpt));
-      return `${sentence} [${citation.label}].`;
+      const sentences = splitSentences(citation.excerpt);
+      // Score by question-token overlap; include ALL sentences with any overlap,
+      // capped at 400 chars per citation so multi-fact questions get full coverage.
+      const scored = sentences
+        .map((s) => ({ s, hits: tokenizeForRetrieval(s).filter((t) => qTokens.has(t)).length }))
+        .filter(({ hits }) => hits > 0);
+      // Fallback: if nothing overlaps, just use the first sentence.
+      const candidates = scored.length > 0 ? scored.sort((a, b) => b.hits - a.hits) : [{ s: sentences[0] ?? "", hits: 0 }];
+
+      let excerpt = "";
+      for (const { s } of candidates) {
+        const clean = stripTrailingSentencePunctuation(truncateSentence(s, 220));
+        if (!clean) continue;
+        if (excerpt.length + clean.length + 2 > 420) break;
+        excerpt += (excerpt ? "; " : "") + clean;
+      }
+      if (!excerpt) excerpt = stripTrailingSentencePunctuation(truncateSentence(sentences[0] ?? "", 260));
+      return `${excerpt} [${citation.label}].`;
     })
     .join(" ");
+}
+
+function splitSentences(text) {
+  const clean = String(text ?? "").replace(/\s+/g, " ").trim();
+  // Split on sentence-ending punctuation followed by space/end, but keep the dot.
+  return clean.match(/[^.!?]+[.!?]+(?:\s|$)|[^.!?]+$/g)?.map((s) => s.trim()).filter(Boolean) ?? [clean];
 }
 
 function validateAnswerCitations(answer, citations, evidence) {
@@ -434,7 +545,7 @@ function validateAnswerCitations(answer, citations, evidence) {
   return { ok: true };
 }
 
-function toCitation(item, index) {
+function toCitation(item, index, scope) {
   return {
     label: `C${index + 1}`,
     incidentId: item.incidentId,
@@ -446,6 +557,18 @@ function toCitation(item, index) {
     excerpt: truncateExcerpt(item.text),
     anchor: `#section-${item.sectionType}-${item.sectionId}`,
     retrievalScore: round(item.retrievalScore),
+    sourceAccess: buildCitationSourceAccess(item, scope),
+  };
+}
+
+function buildCitationSourceAccess(item, scope) {
+  const company = item.company ?? null;
+  return {
+    source: scope?.source ?? DOCUMENT_SCOPE_SOURCE,
+    label: "Uploaded document",
+    accessReason: company
+      ? `Visible through the ${company} document scope.`
+      : "Visible through your uploaded document scope.",
   };
 }
 
@@ -455,6 +578,7 @@ function buildRefusal({
   evidenceCount = null,
   retrievedEvidence = [],
   debug = null,
+  scope = null,
 }) {
   const sourceIncidents = [];
   const response = {
@@ -468,6 +592,7 @@ function buildRefusal({
     evidenceCount: evidenceCount ?? retrievedEvidence.length,
     confidence: 0,
     sourceIncidents,
+    scope,
     promptVersion: QA_PROMPT_VERSION,
     model: QA_MODEL,
     audit: {
@@ -564,6 +689,12 @@ function dedupeAndRankEvidence(items, limit) {
 function matchesPostFilters(incident, filters) {
   if (filters.incidentIds.length > 0 && !filters.incidentIds.includes(incident.id)) {
     return false;
+  }
+  if (Array.isArray(filters.companies) && filters.companies.length > 0) {
+    const allowedCompanies = new Set(filters.companies.map((company) => company.toLowerCase()));
+    if (!allowedCompanies.has(String(incident.company ?? "").toLowerCase())) {
+      return false;
+    }
   }
   if (
     filters.company &&

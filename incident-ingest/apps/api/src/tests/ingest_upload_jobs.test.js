@@ -97,10 +97,20 @@ describe("POST /ingest/upload — API layer", () => {
     expect(res.status).toBe(401);
   });
 
+  it("rejects uploaded files without company scope", async () => {
+    const res = await request(app)
+      .post("/ingest/upload")
+      .set(AUTH)
+      .attach("file", Buffer.from(SAMPLE_TXT), "incident.txt");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/company/i);
+  });
+
   it("accepts a single txt file and stores rawText in the document row", async () => {
     const res = await request(app)
       .post("/ingest/upload")
       .set(AUTH)
+      .field("company", "Acme")
       .attach("file", Buffer.from(SAMPLE_TXT), "incident.txt");
 
     expect(res.status).toBe(202);
@@ -130,6 +140,7 @@ describe("POST /ingest/upload — API layer", () => {
     const res = await request(app)
       .post("/ingest/upload")
       .set(AUTH)
+      .field("company", "Acme")
       .attach("files", Buffer.from(SAMPLE_TXT), "incident-a.txt")
       .attach("files", Buffer.from(secondText), "incident-b.md");
 

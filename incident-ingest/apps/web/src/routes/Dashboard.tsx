@@ -5,6 +5,9 @@ import {
   getIncident,
   getIncidents,
   getSimilarIncidents,
+  getMetadataCompanies,
+  getMetadataTags,
+  getMetadataSeverities,
   postQa,
   searchIncidents,
   type Incident,
@@ -324,20 +327,27 @@ export default function Dashboard() {
     retry: false,
   });
 
-  const companies = useMemo(
-    () => countValues(incidents.map((incident) => incident.company)).slice(0, 5).map(([value]) => value),
-    [incidents]
-  );
+  const companiesQuery = useQuery({
+    queryKey: ["metadata-companies"],
+    queryFn: getMetadataCompanies,
+    retry: false,
+  });
 
-  const tags = useMemo(
-    () =>
-      countValues(
-        incidents.flatMap((incident) => incident.tags.map((value) => value.trim()).filter(Boolean))
-      )
-        .slice(0, 6)
-        .map(([value]) => value),
-    [incidents]
-  );
+  const tagsQuery = useQuery({
+    queryKey: ["metadata-tags"],
+    queryFn: getMetadataTags,
+    retry: false,
+  });
+
+  const severitiesQuery = useQuery({
+    queryKey: ["metadata-severities"],
+    queryFn: getMetadataSeverities,
+    retry: false,
+  });
+
+  const companies = companiesQuery.data ?? [];
+  const tags = (tagsQuery.data ?? []).slice(0, 15);
+  const severities = severitiesQuery.data?.length ? severitiesQuery.data : SEVERITY_OPTIONS;
 
   const recentIncidents = useMemo(
     () =>
@@ -401,17 +411,17 @@ export default function Dashboard() {
       <div className="page-header">
         <div className="page-header-row">
           <div className="page-header-title">
-            <h1>Incident Command Center</h1>
-            <p>Paste the symptom, constrain the search with real backend filters, and move straight to cited root-cause evidence.</p>
+            <h1>Home</h1>
+            <p>Search incident history, review recent reports, and open the evidence behind each result.</p>
           </div>
           <div className="page-header-actions">
             <Link className="btn btn-secondary" to="/upload">
               <Icon name="upload" size={16} />
-              Ingest incident
+              Upload incident
             </Link>
             <Link className="btn btn-secondary" to="/search">
               <Icon name="search" size={16} />
-              Open search view
+              Search
             </Link>
           </div>
         </div>
@@ -421,10 +431,10 @@ export default function Dashboard() {
         <div className="card stat-card">
           <div className="stat-label">
             <Icon name="database" size={14} />
-            Indexed Incidents
+            Incidents
           </div>
           <div className="stat-value">{incidentsLoading ? "--" : totalIncidents}</div>
-          <div className="stat-sub">retrieval corpus</div>
+          <div className="stat-sub">in archive</div>
         </div>
         <div className="card stat-card">
           <div className="stat-label">
@@ -432,20 +442,20 @@ export default function Dashboard() {
             Companies
           </div>
           <div className="stat-value">{incidentsLoading ? "--" : uniqueCompanies}</div>
-          <div className="stat-sub">available company filters</div>
+          <div className="stat-sub">with filters</div>
         </div>
         <div className="card stat-card">
           <div className="stat-label">
             <Icon name="stack" size={14} />
-            Tagged Incidents
+            Tagged
           </div>
           <div className="stat-value">{incidentsLoading ? "--" : taggedIncidents}</div>
-          <div className="stat-sub">usable tag drill-downs</div>
+          <div className="stat-sub">with tags</div>
         </div>
         <div className="card stat-card">
           <div className="stat-label">
             <Icon name="pulse" size={14} />
-            Search Mode
+            Search
           </div>
           <div className="stat-value">Hybrid</div>
           <div className="stat-sub">keyword + vector</div>
@@ -472,20 +482,20 @@ export default function Dashboard() {
       <div className="command-center-layout">
         <div className="card command-panel">
           <div className="panel-heading">
-            <h2>Trigger</h2>
-            {logPasteDetected && <span className="badge badge-warning">Log paste detected</span>}
+            <h2>Search incidents</h2>
+            {logPasteDetected && <span className="badge badge-warning">Multiline input</span>}
           </div>
 
           <form className="command-form" onSubmit={handleSubmit}>
             <div className="field-stack">
-              <label htmlFor="incident-trigger">Paste an error log, stack trace, service, or deploy hash</label>
+              <label htmlFor="incident-trigger">Symptom, error, service, or deploy note</label>
               <textarea
                 id="incident-trigger"
                 className="form-input form-textarea command-textarea"
                 rows={8}
                 value={queryText}
                 onChange={(event) => setQueryText(event.target.value)}
-                placeholder="checkout-api timeout connecting to db-primary after deploy 1f2e3d4..."
+                placeholder="checkout-api timeout connecting to db-primary after deploy"
               />
             </div>
 
@@ -512,7 +522,7 @@ export default function Dashboard() {
             <div className="command-filter-block">
               <div className="command-filter-label">Severity</div>
               <div className="filters-row">
-                {SEVERITY_OPTIONS.map((value) => (
+                {severities.map((value) => (
                   <button
                     key={value}
                     type="button"
@@ -595,11 +605,11 @@ export default function Dashboard() {
             <div className="command-actions">
               <button className="btn btn-primary" type="submit" disabled={!queryText.trim() || searchQuery.isFetching}>
                 <Icon name="search" size={16} />
-                {searchQuery.isFetching ? "Analyzing..." : "Analyze incident"}
+                {searchQuery.isFetching ? "Searching..." : "Search"}
               </button>
               <button className="btn btn-secondary" type="button" onClick={handleReset}>
                 <Icon name="refresh" size={16} />
-                Reset filters
+                Clear filters
               </button>
             </div>
           </form>
@@ -607,14 +617,14 @@ export default function Dashboard() {
           <div className="command-footer">
             {submitted ? (
               <>
-                <span className="badge badge-brand">Query normalized for retrieval</span>
+                <span className="badge badge-brand">Search submitted</span>
                 <span className="command-footer-copy">{submitted.windowLabel}</span>
                 {submitted.company && <span className="command-footer-copy">{submitted.company}</span>}
                 {submitted.severity && <span className="command-footer-copy">{submitted.severity}</span>}
                 {submitted.tag && <span className="command-footer-copy">#{submitted.tag}</span>}
               </>
             ) : (
-              <span className="command-footer-copy">This command center uses the backend search filters that actually exist today: company, severity, tag, and date range.</span>
+              <span className="command-footer-copy">Use company, severity, tag, and date filters when you know the scope.</span>
             )}
           </div>
         </div>
@@ -627,10 +637,10 @@ export default function Dashboard() {
                   <Icon name="inbox" size={28} />
                 </div>
                 <h3>No incidents indexed yet</h3>
-                <p>Use manual ingest first so the command center has real evidence, similar incidents, and fix snippets to stream back.</p>
+                <p>Upload incident reports first so search can return evidence, similar incidents, and fix sections.</p>
                 <Link className="btn btn-primary" to="/upload">
                   <Icon name="upload" size={16} />
-                  Ingest the first incident
+                  Upload first incident
                 </Link>
               </div>
             </div>
@@ -640,21 +650,22 @@ export default function Dashboard() {
             <div className="command-empty-stack">
               <div className="card card-padded">
                 <div className="panel-heading">
-                  <h2>What will appear here</h2>
-                  <span className="badge">Evidence stream</span>
+                  <h2>Results</h2>
+                  <span className="badge">No search yet</span>
                 </div>
                 <div className="empty-state command-empty-state">
                   <div className="empty-state-icon">
                     <Icon name="pulse" size={28} />
                   </div>
-                  <h3>Paste the symptom and run analysis</h3>
-                  <p>The right side will resolve into a suggested root cause, similar incidents, and a fix snippet pulled from incident sections.</p>
+                  <h3>Search the archive</h3>
+                  <p>Results will show the best matching incident, related incidents, and evidence from the original sections.</p>
                 </div>
               </div>
 
               <div className="card card-padded">
-                <div className="panel-heading">
-                  <h2>Recent incident heads-up</h2>
+                <div className="panel-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h2>Recent incidents</h2>
+                  <Link to="/search" className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: "0.75rem" }}>View all</Link>
                 </div>
                 <div className="timeline-stream">
                   {recentIncidents.map((incident) => (
@@ -714,8 +725,8 @@ export default function Dashboard() {
             <>
               <div className="card card-padded command-critical-card">
                 <div className="panel-heading">
-                  <h2>Suggested Root Cause</h2>
-                  <span className="badge badge-danger">{formatMatchPercent(topResult.score)}% strongest match</span>
+                  <h2>Best match</h2>
+                  <span className="badge badge-brand">{formatMatchPercent(topResult.score)}% match</span>
                 </div>
 
                 <div className="command-hero">
@@ -747,8 +758,8 @@ export default function Dashboard() {
               <div className="command-secondary-grid">
                 <div className="card card-padded">
                   <div className="panel-heading">
-                    <h2>Instant Quick Fix</h2>
-                    {qaQuery.isFetching && <span className="badge">Synthesizing</span>}
+                    <h2>Suggested fix</h2>
+                    {qaQuery.isFetching && <span className="badge">Loading</span>}
                   </div>
 
                   <ul className="command-bullet-list">
@@ -772,7 +783,7 @@ export default function Dashboard() {
 
                 <div className="card card-padded">
                   <div className="panel-heading">
-                    <h2>Runbook Snippet</h2>
+                    <h2>Fix section</h2>
                     <button className="btn btn-secondary" type="button" onClick={handleCopySnippet} disabled={!runbookSection?.text}>
                       <Icon name="fileText" size={16} />
                       {copiedSnippet ? "Copied" : "Copy snippet"}
@@ -795,7 +806,7 @@ export default function Dashboard() {
 
               <div className="card card-padded">
                 <div className="panel-heading">
-                  <h2>Top Similar Historical Incidents</h2>
+                  <h2>Similar incidents</h2>
                   <span className="badge">{similarQuery.data?.length ?? 0} related incidents</span>
                 </div>
 
@@ -820,7 +831,7 @@ export default function Dashboard() {
 
               <div className="card card-padded">
                 <div className="panel-heading">
-                  <h2>Evidence Stream</h2>
+                  <h2>Matching evidence</h2>
                   <span className="badge badge-brand">{searchResults.length} retrieved matches</span>
                 </div>
                 <EvidenceTimeline results={searchResults} />

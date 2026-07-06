@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { uploadFiles, getJobStatus, type JobStatus } from "../lib/api";
+import { uploadFiles, getJobStatus, type JobStatus, getMetadataCompanies } from "../lib/api";
 import Icon from "../components/Icon";
 
 const MAX_FILES_PER_BATCH = 20;
@@ -37,9 +37,15 @@ function statusLabel(job: UploadJob) {
 
 export default function Upload() {
   const [files, setFiles] = useState<File[]>([]);
+  const [company, setCompany] = useState("");
+  const [companies, setCompanies] = useState<string[]>([]);
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    getMetadataCompanies().then(setCompanies).catch(console.error);
+  }, []);
 
   const totalSelectedSize = files.reduce((sum, file) => sum + file.size, 0);
   const completedCount = uploadJobs.filter((job) => job.status?.status === "completed").length;
@@ -81,6 +87,7 @@ export default function Upload() {
 
   const clearFiles = () => {
     setFiles([]);
+    setCompany("");
     setUploadJobs([]);
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -89,12 +96,16 @@ export default function Upload() {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (files.length === 0) return;
+    if (!company.trim()) {
+      setError("Company is required before upload.");
+      return;
+    }
 
     setError(null);
     setUploadJobs([]);
 
     try {
-      const response = await uploadFiles(files);
+      const response = await uploadFiles(files, { company: company.trim() });
       const uploads =
         response.uploads ??
         (response.jobId && response.documentId
@@ -194,8 +205,8 @@ export default function Upload() {
     <section className="fade-in">
       <div className="page-header">
         <div className="page-header-title">
-          <h1>Upload Incidents</h1>
-          <p>Upload one or many reports. Each file becomes its own queued parsing job with independent status tracking.</p>
+          <h1>Upload</h1>
+          <p>Add incident reports to the archive. Each file is parsed as a separate incident.</p>
         </div>
       </div>
 
@@ -221,10 +232,32 @@ export default function Upload() {
       <div className="split-layout">
         <div className="card card-padded">
           <div className="panel-heading">
-            <h2>Select Files</h2>
+            <h2>Select files</h2>
           </div>
 
           <form id="upload-form" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="upload-company">
+                Company <span>*</span>
+              </label>
+              <input
+                id="upload-company"
+                className="form-input"
+                value={company}
+                onChange={(event) => setCompany(event.target.value)}
+                placeholder="Acme"
+                disabled={hasActiveJobs}
+                required
+                list="company-list"
+              />
+              <datalist id="company-list">
+                {companies.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="form-help">This becomes the document scope used by Search and Q&amp;A.</p>
+            </div>
+
             <div className="form-group">
               <label
                 className="upload-dropzone"
@@ -253,10 +286,10 @@ export default function Upload() {
                     ? files[0].name
                     : files.length > 1
                       ? `${files.length} files selected`
-                      : "Drop incident reports here"}
+                      : "Select incident reports"}
                 </div>
                 <div style={{ fontWeight: 600, marginBottom: 6, textAlign: "center", color: "var(--text-primary)" }}>
-                  {files.length > 0 ? `${formatSize(totalSelectedSize)} total` : "Click or drag files to upload"}
+                  {files.length > 0 ? `${formatSize(totalSelectedSize)} total` : "Click or drag files here"}
                 </div>
                 <div className="upload-dropzone-copy">
                   {files.length > 0
@@ -274,6 +307,45 @@ export default function Upload() {
                   disabled={hasActiveJobs}
                 />
               </label>
+
+              {files.length > 0 && !hasActiveJobs && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                  {files.map((f, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "var(--bg-overlay)",
+                        borderRadius: "var(--r-sm)",
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.8125rem",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {f.name} ({formatSize(f.size)})
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: 4 }}
+                        onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
+                        title="Remove file"
+                      >
+                        <Icon name="x" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {uploadJobs.length > 0 && (
@@ -298,7 +370,7 @@ export default function Upload() {
                     className="progress-fill"
                     style={{
                       width: `${(completedCount / uploadJobs.length) * 100}%`,
-                      background: "linear-gradient(90deg, var(--brand-from), var(--brand-to))",
+                      background: "var(--brand)",
                       transition: "width 0.3s ease",
                     }}
                   />
@@ -352,7 +424,7 @@ export default function Upload() {
                 type="submit"
                 id="submit-btn"
                 className="btn btn-primary"
-                disabled={files.length === 0 || hasActiveJobs}
+                disabled={files.length === 0 || !company.trim() || hasActiveJobs}
               >
                 {hasActiveJobs ? (
                   <>
@@ -367,7 +439,7 @@ export default function Upload() {
                 ) : (
                   <>
                     <Icon name="upload" size={16} />
-                    Upload and Parse
+                    Upload
                   </>
                 )}
               </button>
@@ -389,7 +461,7 @@ export default function Upload() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card card-padded">
             <div className="panel-heading">
-              <h2>Section Format Guide</h2>
+              <h2>Recommended sections</h2>
             </div>
             {[
               {
@@ -451,10 +523,10 @@ export default function Upload() {
 
           <div className="card card-padded" style={{ opacity: 0.75 }}>
             <div className="panel-heading">
-              <h2>URL Crawl</h2>
+              <h2>URL import</h2>
             </div>
             <p style={{ fontSize: "0.8125rem" }}>
-              Automatic crawl from status pages and GitHub issues is planned next.
+              Import from status pages and GitHub issues is planned.
             </p>
             <div style={{ marginTop: 12 }}>
               <input

@@ -169,12 +169,12 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
   return (
     <div className="card card-padded" id="graph-panel">
       <div className="panel-heading">
-        <h2>Knowledge Graph</h2>
+        <h2>Patterns</h2>
         <Link
           to={company ? `/graph?service=${encodeURIComponent(company)}` : "/graph"}
           style={{ fontSize: "0.75rem", color: "var(--brand)", display: "inline-flex", alignItems: "center", gap: 6 }}
         >
-          Browse graph
+          View patterns
           <Icon name="arrowRight" size={14} />
         </Link>
       </div>
@@ -187,7 +187,7 @@ function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
             <Icon name="graph" size={26} />
           </div>
           <p style={{ fontSize: "0.8125rem" }}>
-            No graph data yet. Nodes are extracted as incidents move through processing.
+            No pattern data yet. Patterns are extracted as incidents are processed.
           </p>
         </div>
       )}

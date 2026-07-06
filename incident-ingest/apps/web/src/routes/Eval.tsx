@@ -26,8 +26,8 @@ export default function Eval() {
       <div className="page-header">
         <div className="page-header-row">
           <div className="page-header-title">
-            <h1>Latest Evaluation</h1>
-            <p>Continuous retrieval and generation quality report.</p>
+            <h1>Quality</h1>
+            <p>Latest retrieval and answer quality report.</p>
           </div>
           <div className="page-header-actions">
             <button className="btn btn-secondary" type="button" onClick={() => refetch()} disabled={isFetching}>

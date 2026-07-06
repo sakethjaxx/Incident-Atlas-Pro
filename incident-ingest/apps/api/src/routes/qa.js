@@ -27,6 +27,7 @@ qaRouter.post("/qa", requireQa, qaLimiter, async (req, res) => {
       input: {
         question: req.body?.question ?? null,
         filters: req.body?.filters ?? null,
+        scope: req.body?.scope ?? null,
         options: req.body?.options ?? null,
       },
       output: {
@@ -48,6 +49,9 @@ qaRouter.post("/qa", requireQa, qaLimiter, async (req, res) => {
     return res.json({ ...payload, auditId: audit?.id ?? null });
   } catch (error) {
     if (error instanceof QaValidationError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
       return res.status(error.status).json({ error: error.message });
     }
     console.error("[qa] answer failed:", error);
