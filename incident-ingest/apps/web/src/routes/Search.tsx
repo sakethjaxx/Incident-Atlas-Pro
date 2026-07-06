@@ -346,7 +346,11 @@ export default function Search() {
               <Icon name="inbox" size={28} />
             </div>
             <h3>No matching incidents</h3>
-            <p>Try a broader term, remove one filter, or search with the user-visible symptom instead of the root cause.</p>
+            <p>
+              {submitted.company || submitted.severity || submitted.tag || submitted.from || submitted.to
+                ? "Try a broader term, or try clearing some of your filters."
+                : "Try a broader term, or search with the user-visible symptom instead of the root cause."}
+            </p>
           </div>
         </div>
       )}

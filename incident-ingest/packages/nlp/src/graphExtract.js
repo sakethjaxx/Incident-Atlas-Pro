@@ -75,6 +75,7 @@ const NOISE_TERMS = new Set([
   "issue", "problem", "error", "bug", "failure", "incident", "outage",
   "service", "system", "database", "latency", "timeout", "api", "server",
   "alert", "alarm", "event", "condition", "situation", "thing", "stuff",
+  "something", "unknown", "behavior", "impact", "cause", "root cause", "fix",
 ]);
 
 // ─── Name normalization ───────────────────────────────────────────────────────
@@ -170,12 +171,14 @@ const SYMPTOM_PATTERNS = [
   /\bconnection\s+(?:pool\s+)?(?:exhausted|saturated|refused)\b/i,
   /\bcascading\s+(?:failure|error|timeout)/i,
   /\b(?:degraded|slow|unresponsive)\s+(?:service|api|endpoint|response)/i,
+  /(?:increased|spike\s+in)\s+(?:latency|errors?|cpu|memory)/i,
 ];
 
 const CAUSED_BY_PATTERNS = [
   /(?:caused?\s+by|due\s+to|triggered?\s+by|because\s+of|resulted?\s+from)\s+([^.;,\n]{4,80})/i,
   /(?:root\s+cause(?:\s+was)?|underlying\s+cause(?:\s+was)?)[:\s]+([^.;\n]{4,80})/i,
   /(?:the\s+issue\s+was|problem\s+was)\s+([^.;\n]{4,80})/i,
+  /(?:stemmed\s+from|attributed\s+to)\s+([^.;,\n]{4,80})/i,
 ];
 
 const FIX_PATTERNS = [
@@ -183,6 +186,7 @@ const FIX_PATTERNS = [
   /(?:restarted?|scaled?\s+(?:up|down|out)|disabled?|patched?|upgraded?)\s+([^.;,\n]{4,80})/i,
   /(?:increased?\s+(?:capacity|pool|limit|timeout)|decreased?\s+(?:batch|limit))\s*([^.;\n]{0,60})/i,
   /(?:deployed?\s+(?:fix|patch|hotfix|update)|pushed?\s+(?:fix|hotfix))\s+([^.;,\n]{0,60})/i,
+  /(?:applied\s+hotfix|bypassed|rerouted|failed\s+over)\s+([^.;,\n]{4,80})/i,
 ];
 
 /**

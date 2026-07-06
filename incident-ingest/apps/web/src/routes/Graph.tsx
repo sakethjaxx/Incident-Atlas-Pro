@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getGraphPatterns, getGraphNeighbors, type GraphNode, type GraphPattern, getMetadataNodes } from "../lib/api";
 import Icon from "../components/Icon";
+import ForceGraph2D from "react-force-graph-2d";
 
 const NODE_TYPE_COLOR: Record<string, string> = {
   service: "var(--brand)",
@@ -128,6 +129,43 @@ function NeighborsPanel({ nodeId }: { nodeId: string }) {
             </div>
           );
         })}
+      </div>
+      <div style={{ marginTop: 20, height: 400, border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
+        <ForceGraph2D
+          width={600}
+          height={400}
+          graphData={{
+            nodes: data.nodes.map(n => ({ id: n.id, name: n.name, type: n.type, color: nodeColor(n.type) })),
+            links: data.edges.map(e => ({ source: e.from, target: e.to, type: e.type }))
+          }}
+          nodeLabel="name"
+          nodeColor="color"
+          linkDirectionalArrowLength={3.5}
+          linkDirectionalArrowRelPos={1}
+          linkColor={() => "var(--border)"}
+          nodeCanvasObject={(node, ctx, globalScale) => {
+            const label = node.name as string;
+            const fontSize = 12 / globalScale;
+            ctx.font = `${fontSize}px Sans-Serif`;
+            const textWidth = ctx.measureText(label).width;
+            const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2); // some padding
+
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.fillRect(
+              (node.x || 0) - bckgDimensions[0] / 2, 
+              (node.y || 0) - bckgDimensions[1] / 2, 
+              bckgDimensions[0], 
+              bckgDimensions[1]
+            );
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = node.color as string;
+            ctx.fillText(label, node.x || 0, node.y || 0);
+
+            node.__bckgDimensions = bckgDimensions; // to re-use in nodePointerAreaPaint
+          }}
+        />
       </div>
     </div>
   );
