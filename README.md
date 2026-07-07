@@ -159,4 +159,4 @@ The production-style stack includes:
 
 ## Status
 
-Sprint 1 is complete. The current system supports end-to-end incident upload, async processing, structured parsing, job tracking, incident browsing, and production-style deployment verification.
+Please see the `incident-ingest/README.md` file for the latest project status, feature set, and sprint completion updates.

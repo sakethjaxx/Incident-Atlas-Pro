@@ -20,7 +20,7 @@
 4. **Index:** Save to Postgres with `pgvector` index + FTS index.
 5. **Graph Extraction (Sprint 3):** Worker triggers `extractGraph(sections)` pipeline after embedding.
    - *Contract:* Input is `[{ type, text }]`. Output is `{ nodes: [{ name, type }], edges: [{ from_name, to_name, rel_type, evidence_section_id }] }`.
-   - *Pipeline:* Hybrid approach. Primary: Claude Haiku 4.5. Fallback: Deterministic rule-based extractor.
+   - *Pipeline:* Hybrid approach. Primary: Deterministic rule-based extractor. Model-backed option: `qwen3:4b` via Ollama. No Anthropic/OpenAI used in live config (see `OPEN_SOURCE_RAG_STACK.md`).
    - *Failure state:* Graph extraction failure does NOT block ingestion. Unsuccessful graphs leave no rows and will be resolved by a background keyset-paginated backfill.
    - *UI Library:* `react-force-graph-2d` used to visualize `GET /graph/neighbors` queries.
 6. **Retrieval:** `GET /search` runs query embedding, merging Vector + FTS, mapping vector distances to scores, and returning Section-level text as Evidence.
