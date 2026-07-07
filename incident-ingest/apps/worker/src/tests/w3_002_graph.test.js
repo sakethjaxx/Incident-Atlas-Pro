@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { safeIndexIncidentGraph } from "../graph.js";
+import { safeIndexIncidentGraph } from "@pkg/db";
 
 // Force rule fallback (no LLM call) for all tests
 delete process.env.GRAPH_EXTRACTOR;

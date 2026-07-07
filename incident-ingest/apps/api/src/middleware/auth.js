@@ -1,3 +1,4 @@
+import { logger } from "../lib/logger.js";
 /**
  * Bearer-token auth middleware for admin routes.
  *
@@ -9,7 +10,7 @@
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
 
 if (!ADMIN_TOKEN) {
-  console.warn(
+  logger.warn(
     "[auth] ADMIN_TOKEN is not set — admin routes are unprotected. Set ADMIN_TOKEN in .env for security."
   );
 }

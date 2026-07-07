@@ -25,6 +25,7 @@
  *   1  Fatal error (DB unreachable, bad env, etc.)
  */
 
+import { logger } from "./lib/logger.js";
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { extractGraph } from "@pkg/nlp";
@@ -61,12 +62,12 @@ async function upsertGraphForIncident(incident) {
   }
 
   if (DRY_RUN) {
-    console.log(
+    logger.info(
       `  [dry-run] incident ${incident.id}: would upsert ${nodes.length} node(s), ${edges.length} edge(s)`
     );
-    nodes.forEach((n) => console.log(`    node: [${n.node_type}] ${n.name}`));
+    nodes.forEach((n) => logger.info(`    node: [${n.node_type}] ${n.name}`));
     edges.forEach((e) =>
-      console.log(`    edge: ${e.from_name} -[${e.rel_type}]-> ${e.to_name} (sec: ${e.evidence_section_id})`)
+      logger.info(`    edge: ${e.from_name} -[${e.rel_type}]-> ${e.to_name} (sec: ${e.evidence_section_id})`)
     );
     return { nodes: nodes.length, edges: edges.length, skipped: false };
   }
@@ -100,7 +101,7 @@ async function upsertGraphForIncident(incident) {
     );
 
     if (!fromRows.length || !toRows.length) {
-      console.warn(
+      logger.warn(
         `  [backfill] Could not resolve node IDs for ${edge.from_name} → ${edge.to_name}, skipping edge`
       );
       continue;
@@ -125,7 +126,7 @@ async function upsertGraphForIncident(incident) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log(
+  logger.info(
     `[graphBackfill] Starting — batch=${BATCH_SIZE}, dry-run=${DRY_RUN}`
   );
 
@@ -138,10 +139,10 @@ async function main() {
     WHERE ge."id" IS NULL
   `;
   const total = Number(countRows[0]?.n ?? 0);
-  console.log(`[graphBackfill] Found ${total} incident(s) with no graph edges`);
+  logger.info(`[graphBackfill] Found ${total} incident(s) with no graph edges`);
 
   if (total === 0) {
-    console.log("[graphBackfill] Nothing to do — all incidents already have graph data or no sections.");
+    logger.info("[graphBackfill] Nothing to do — all incidents already have graph data or no sections.");
     await prisma.$disconnect();
     process.exit(0);
   }
@@ -176,7 +177,7 @@ async function main() {
       orderBy: { id: "asc" },
     });
 
-    console.log(
+    logger.info(
       `[graphBackfill] Processing batch of ${incidents.length} incidents (${processed} done so far)...`
     );
 
@@ -188,11 +189,11 @@ async function main() {
         if (skipped) totalSkipped++;
         processed++;
         cursor = incident.id;
-        console.log(
+        logger.info(
           `  incident ${incident.id}: +${nodes} node(s), +${edges} edge(s)${skipped ? " [no sections, skipped]" : ""}`
         );
       } catch (err) {
-        console.error(
+        logger.error(
           `[graphBackfill] Error processing incident ${incident.id}:`,
           err?.message ?? err
         );
@@ -203,7 +204,7 @@ async function main() {
     }
   }
 
-  console.log(
+  logger.info(
     `[graphBackfill] Done. incidents=${processed}, nodes=${totalNodes}, edges=${totalEdges}, skipped=${totalSkipped}`
   );
 
@@ -212,7 +213,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[graphBackfill] Fatal:", err?.message ?? err);
+  logger.error("[graphBackfill] Fatal:", err?.message ?? err);
   prisma.$disconnect().catch(() => {});
   process.exit(1);
 });

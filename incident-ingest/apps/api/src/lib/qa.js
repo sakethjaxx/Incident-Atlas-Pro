@@ -1,5 +1,5 @@
 import { tokenizeForRetrieval, getRagConfig } from "@pkg/nlp";
-import { searchIncidents, retrieveChunkEvidence } from "./retrieval.js";
+import { searchIncidents, retrieveChunkEvidence } from "@pkg/db";
 import {
   DOCUMENT_SCOPE_SOURCE,
   PUBLIC_WEB_SCOPE_SOURCE,

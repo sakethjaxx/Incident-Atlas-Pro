@@ -13,6 +13,7 @@
  * No Anthropic. No OpenAI.
  */
 
+import { logger } from "./logger.js";
 import { getRagConfig, ollamaGenerate } from "@pkg/nlp";
 
 export const QA_PROMPT_VERSION_LOCAL = "qa-v1";
@@ -93,7 +94,7 @@ export async function tryOllamaAnswer(input, config = getRagConfig()) {
     }
     return { answer, insufficient: false };
   } catch (error) {
-    console.warn("[qa] ollama generation failed, using extractive fallback:", error?.message);
+    logger.warn("[qa] ollama generation failed, using extractive fallback:", error?.message);
     return null;
   }
 }

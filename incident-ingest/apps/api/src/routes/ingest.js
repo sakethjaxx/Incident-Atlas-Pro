@@ -10,8 +10,7 @@ import { adminIngestLimiter } from "../middleware/rateLimit.js";
 import { parseSections, summarize } from "@pkg/nlp";
 
 import { redisConnection, PARSE_QUEUE_NAME } from "../lib/queue.js";
-import { safeIndexIncidentEmbeddings } from "../lib/retrieval.js";
-import { safeIndexIncidentGraph } from "../lib/graph.js";
+import { safeIndexIncidentEmbeddings, safeIndexIncidentGraph, uploadToStorage } from "@pkg/db";
 import { safeIndexIncidentChunks } from "../lib/chunks.js";
 
 const parsedMaxUploadFiles = Number.parseInt(
@@ -28,7 +27,7 @@ const ALLOWED_UPLOAD_MIME_TYPES = ["text/plain", "text/markdown"];
 
 function createUploadMiddleware() {
   return multer({
-    dest: process.env.UPLOAD_DIR || "uploads/",
+    storage: multer.memoryStorage(),
     limits: {
       fileSize: MAX_UPLOAD_FILE_SIZE_BYTES,
       files: MAX_UPLOAD_FILES,
@@ -140,24 +139,22 @@ ingestRouter.post(
         const ext = path.extname(uploadedFile.originalname ?? "").toLowerCase();
         const isPdf = ext === ".pdf" || uploadedFile.mimetype === "application/pdf";
 
+        const key = `uploads/${crypto.randomUUID()}${ext}`;
+        await uploadToStorage(key, uploadedFile.buffer, uploadedFile.mimetype || "application/octet-stream");
+
         let rawText = null;
         if (!isPdf) {
-          try {
-            rawText = await readFile(uploadedFile.path, "utf-8");
-            if (!rawText.trim()) {
-              return res.status(400).json({
-                error: `Uploaded file is empty: ${uploadedFile.originalname}`,
-              });
-            }
-          } catch (readErr) {
-            return next(
-              new Error(`Failed to read uploaded file: ${readErr.message}`)
-            );
+          rawText = uploadedFile.buffer.toString("utf-8");
+          if (!rawText.trim()) {
+            return res.status(400).json({
+              error: `Uploaded file is empty: ${uploadedFile.originalname}`,
+            });
           }
         }
 
         preparedFiles.push({
           file: uploadedFile,
+          key,
           rawText,
           hash: rawText
             ? crypto.createHash("sha256").update(rawText).digest("hex")
@@ -183,7 +180,7 @@ ingestRouter.post(
 
         const doc = await prisma.document.create({
           data: {
-            rawPath: preparedFile.file.path,
+            rawPath: preparedFile.key,
             rawText: preparedFile.rawText,
             hash: preparedFile.hash,
             fetchedAt: new Date(),

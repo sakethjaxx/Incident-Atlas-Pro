@@ -1,3 +1,4 @@
+import { logger } from "../lib/logger.js";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { writeAuditLog } from "../lib/audit.js";
@@ -44,7 +45,7 @@ evalRouter.post("/eval/queries", requireAdmin, evalQueriesLimiter, async (req, r
     if (error instanceof EvalValidationError) {
       return res.status(error.status).json({ error: error.message });
     }
-    console.error("[eval] query upsert failed:", error);
+    logger.error("[eval] query upsert failed:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -81,7 +82,7 @@ evalRouter.post("/eval/run", requireAdmin, evalRunsLimiter, async (req, res) => 
     if (error instanceof EvalValidationError) {
       return res.status(error.status).json({ error: error.message });
     }
-    console.error("[eval] run failed:", error);
+    logger.error("[eval] run failed:", error);
     return res.status(500).json({ error: "Eval runner error" });
   }
 });
@@ -95,7 +96,7 @@ evalRouter.get("/eval/latest", requireRead, evalLatestLimiter, async (_req, res)
     }
     return res.json(result);
   } catch (error) {
-    console.error("[eval] latest failed:", error);
+    logger.error("[eval] latest failed:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

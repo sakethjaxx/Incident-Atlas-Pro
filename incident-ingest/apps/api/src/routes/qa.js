@@ -1,3 +1,4 @@
+import { logger } from "../lib/logger.js";
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { writeAuditLog } from "../lib/audit.js";
@@ -54,7 +55,7 @@ qaRouter.post("/qa", requireQa, qaLimiter, async (req, res) => {
     if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
       return res.status(error.status).json({ error: error.message });
     }
-    console.error("[qa] answer failed:", error);
+    logger.error("[qa] answer failed:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

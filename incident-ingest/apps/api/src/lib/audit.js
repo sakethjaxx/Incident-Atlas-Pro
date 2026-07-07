@@ -1,3 +1,4 @@
+import { logger } from "./logger.js";
 import crypto from "node:crypto";
 
 function sha256(value) {
@@ -74,7 +75,7 @@ export async function writeAuditLog(client, req, entry) {
       },
     });
   } catch (error) {
-    console.warn("[audit] write skipped:", error?.message ?? error);
+    logger.warn("[audit] write skipped:", error?.message ?? error);
     return null;
   }
 }

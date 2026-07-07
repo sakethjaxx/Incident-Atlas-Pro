@@ -12,6 +12,7 @@
  * indexers: NEVER throws, returns true on success/no-op, false on error.
  */
 
+import { logger } from "./logger.js";
 import {
   buildChunksForIncident,
   buildChunkEmbeddingText,
@@ -22,7 +23,7 @@ import {
   quantizeVector,
   serializeQuantized,
 } from "@pkg/nlp";
-import { invalidateTqCache } from "./retrieval.js";
+import { invalidateTqCache } from "@pkg/db";
 
 /**
  * Rebuild all chunks for one incident (delete + insert).
@@ -112,7 +113,7 @@ export async function safeIndexIncidentChunks(client, incident, opts = {}) {
     await indexIncidentChunks(client, incident, opts);
     return true;
   } catch (error) {
-    console.warn(
+    logger.warn(
       `[chunks] chunk index skipped for incidentId=${incident?.id}:`,
       error?.message ?? error
     );

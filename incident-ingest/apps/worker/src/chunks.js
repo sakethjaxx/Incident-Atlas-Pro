@@ -12,6 +12,7 @@
  * indexers: NEVER throws, returns true on success/no-op, false on error.
  */
 
+import { logger } from "./lib/logger.js";
 import {
   buildChunksForIncident,
   buildChunkEmbeddingText,
@@ -109,7 +110,7 @@ export async function safeIndexIncidentChunks(client, incident, opts = {}) {
     await indexIncidentChunks(client, incident, opts);
     return true;
   } catch (error) {
-    console.warn(
+    logger.warn(
       `[chunks] chunk index skipped for incidentId=${incident?.id}:`,
       error?.message ?? error
     );

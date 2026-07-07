@@ -24,13 +24,13 @@
  * @module processor
  */
 
+import { logger } from "./lib/logger.js";
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { parseSections, summarize } from "@pkg/nlp";
-import { safeIndexIncidentEmbeddings } from "./retrieval.js";
-import { safeIndexIncidentGraph } from "./graph.js";
+import { safeIndexIncidentEmbeddings, safeIndexIncidentGraph, readFromStorage } from "@pkg/db";
 import { safeIndexIncidentChunks } from "./chunks.js";
 
 // ── DB client ─────────────────────────────────────────────────────────────────
@@ -82,7 +82,12 @@ export async function resolveRawText(doc) {
 
   // txt, md, or unknown — attempt utf-8 read
   try {
-    const content = await readFile(doc.rawPath, "utf-8");
+    let content;
+    if (doc.rawPath.startsWith("uploads/")) {
+      content = await readFromStorage(doc.rawPath);
+    } else {
+      content = await readFile(doc.rawPath, "utf-8");
+    }
     if (!content.trim()) {
       throw new PermanentError("File at rawPath is empty");
     }
@@ -233,7 +238,7 @@ async function safeUpdateJob(documentId, data) {
   try {
     await prisma.ingestJob.updateMany({ where: { documentId }, data });
   } catch (e) {
-    console.warn(
+    logger.warn(
       `[processor] safeUpdateJob failed for documentId=${documentId}:`,
       e?.message ?? e
     );

@@ -1,0 +1,114 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/*'
+  pull_request:
+    branches:
+      - main
+      - 'feat/*'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: incident_ingest
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/incident_ingest
+      REDIS_URL: redis://localhost:6379
+      ADMIN_TOKEN: ci_admin_token
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm v9
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Deploy Prisma migrations
+        run: pnpm --filter @app/api exec prisma migrate deploy
+
+      - name: Run unit tests
+        run: |
+          pnpm --filter @pkg/nlp test:unit
+          pnpm --filter @app/api test:unit
+          pnpm --filter @app/worker test:unit
+
+      - name: Run integration tests
+        run: pnpm --filter @app/api test:integration
+
+      - name: Run eval harness and check thresholds
+        run: |
+          # Seed fixtures
+          # Note: Add fixture seed command if needed, e.g. pnpm --filter @app/api run seed:fixtures
+          
+          # Start the API server in background for eval tests
+          PORT=3001 pnpm --filter @app/api run start &
+          API_PID=$!
+          
+          # Wait for API to be ready
+          sleep 5
+          
+          # Run eval run
+          EVAL_RESULT=$(curl -s -X POST http://localhost:3001/eval/run \
+            -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d '{"mode": "fixture"}')
+          
+          echo "Eval result: $EVAL_RESULT"
+          
+          # Parse metrics
+          RECALL=$(echo $EVAL_RESULT | jq -r '.metrics.recallAt5')
+          QA_REFUSAL=$(echo $EVAL_RESULT | jq -r '.metrics.qaRefusalAccuracy')
+          
+          # Thresholds from docs/API_SPEC.md (assume recallAt5 >= 0.8, qaRefusalAccuracy >= 0.9)
+          if (( $(echo "$RECALL < 0.8" | bc -l) )); then
+            echo "Failed: recallAt5 ($RECALL) is below threshold 0.8"
+            kill $API_PID
+            exit 1
+          fi
+          
+          if (( $(echo "$QA_REFUSAL < 0.9" | bc -l) )); then
+            echo "Failed: qaRefusalAccuracy ($QA_REFUSAL) is below threshold 0.9"
+            kill $API_PID
+            exit 1
+          fi
+          
+          echo "Eval passed successfully."
+          kill $API_PID

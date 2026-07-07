@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { normalizeSearchParams, searchIncidents } from "../lib/retrieval.js";
+import { normalizeSearchParams, searchIncidents } from "@pkg/db";
 import {
   DOCUMENT_SCOPE_SOURCE,
   PUBLIC_WEB_SCOPE_SOURCE,

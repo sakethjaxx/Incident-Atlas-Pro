@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { findSimilarIncidents } from "../lib/retrieval.js";
+import { findSimilarIncidents } from "@pkg/db";
 import { requireRead } from "../middleware/auth.js";
 import { publicReadLimiter } from "../middleware/rateLimit.js";
 

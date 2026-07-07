@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describeEmbeddingProvider, getRagConfig } from "@pkg/nlp";
-import { searchIncidents } from "./retrieval.js";
+import { searchIncidents } from "@pkg/db";
 
 const VALID_QUERY_TYPES = new Set(["search", "graph", "qa", "mixed"]);
 const VALID_MODES = new Set(["fixture", "live"]);

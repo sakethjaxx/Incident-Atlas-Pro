@@ -1,3 +1,5 @@
+import { logger } from "./lib/logger.js";
+import pinoHttp from "pino-http";
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
@@ -30,6 +32,7 @@ export function buildApp() {
 
   app.use(cors({ origin: ALLOWED_ORIGIN, methods: ["GET", "POST", "OPTIONS"] }));
   app.use(express.json({ limit: "10mb" }));
+  app.use(pinoHttp({ logger }));
 
 
   // Routes
@@ -55,7 +58,7 @@ export function buildApp() {
   // column names, query fragments, or stack paths. Only surface client-safe messages
   // (those explicitly set on the error object by route handlers).
   app.use((error, _req, res, _next) => {
-    console.error("[error]", error);
+    logger.error("[error]", error);
     const status = error.status ?? 500;
     const isClientError = status >= 400 && status < 500;
     const message =
