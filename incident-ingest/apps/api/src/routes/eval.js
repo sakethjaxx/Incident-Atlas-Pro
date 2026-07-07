@@ -94,6 +94,12 @@ evalRouter.get("/eval/latest", requireRead, evalLatestLimiter, async (_req, res)
     if (!result) {
       return res.status(404).json({ error: "No eval run has completed" });
     }
+    
+    const incidentCount = await prisma.incident.count();
+    if (incidentCount < 500) {
+      result.smallSampleWarning = true;
+    }
+    
     return res.json(result);
   } catch (error) {
     logger.error("[eval] latest failed:", error);

@@ -112,3 +112,17 @@ All of the following on a corpus of ≥ 10k real incident chunks:
 5. Re-index + seed-rotation procedure documented and exercised once.
 
 Until then: keep `RETRIEVAL_BACKEND=pgvector` in production.
+
+## Real Promotion Test Results (10k chunks)
+
+Tested on 11,096 synthetic chunks using `pnpm bench` in fixture mode.
+
+| Criterion | Result | Pass/Fail |
+|---|---|---|
+| 1. recall@10 delta vs pgvector exact ≥ −0.02 | Delta is 0.000 (0.8793 vs 0.8793) | **PASS** |
+| 2. End-to-end search latency p95 ≤ pgvector HNSW p95 | 552ms vs 48ms (brute-force scan is 10x slower without cache/HNSW) | **FAIL** |
+| 3. Memory reduction ≥ 4× | 4.6× reduction (14.7MB vs 68.1MB) | **PASS** |
+| 4. No citation-precision regression in `--mode live` | Skipped / not run in live mode | **FAIL** |
+| 5. Re-index procedure documented and exercised | Not yet exercised | **FAIL** |
+
+**Conclusion:** Still failing criteria. `RETRIEVAL_BACKEND` remains `pgvector`.

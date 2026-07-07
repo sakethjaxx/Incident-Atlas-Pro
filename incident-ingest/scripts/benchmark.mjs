@@ -117,7 +117,7 @@ function percentile(values, p) {
 
 async function loadFixtures() {
   const incidents = JSON.parse(
-    await readFile(path.join(ROOT, "fixtures/bench/incidents.json"), "utf-8")
+    await readFile(path.join(ROOT, "fixtures/bench/10k_incidents.json"), "utf-8")
   ).incidents;
   const queries = JSON.parse(
     await readFile(path.join(ROOT, "fixtures/bench/queries.json"), "utf-8")

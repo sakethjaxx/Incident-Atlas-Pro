@@ -84,6 +84,22 @@ export default function Eval() {
                   <span>Mode: {data.mode}</span>
                   <span>Query Set: {data.querySetVersion}</span>
                   {data.gitSha && <span>Commit: {data.gitSha.slice(0, 7)}</span>}
+                  {data.smallSampleWarning && (
+                    <span style={{
+                      background: "rgba(255,193,7,0.15)",
+                      color: "var(--warning)",
+                      padding: "2px 8px",
+                      borderRadius: 12,
+                      fontWeight: 600,
+                      fontSize: "0.75rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4
+                    }}>
+                      <Icon name="alert" size={14} />
+                      Small sample — not production-scale evidence
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginTop: 4 }}>
                   Finished: {formatDate(data.finishedAt)}
