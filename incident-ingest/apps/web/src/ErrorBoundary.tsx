@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            background: "var(--bg-base, #080b12)",
+            background: "var(--bg-base, #f6f7f9)",
             padding: 24,
           }}
         >
@@ -46,28 +46,27 @@ export class ErrorBoundary extends Component<Props, State> {
             style={{
               maxWidth: 520,
               width: "100%",
-              background: "rgba(19, 25, 32, 0.9)",
-              border: "1px solid rgba(248, 113, 113, 0.3)",
-              borderRadius: 16,
+              background: "var(--bg-surface, #ffffff)",
+              border: "1px solid var(--border, #d9dee5)",
+              borderRadius: 8,
               padding: "28px 32px",
-              boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+              boxShadow: "0 1px 2px rgba(15,23,42,0.08)",
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
             <h1
               style={{
                 fontSize: "1.25rem",
                 fontWeight: 700,
-                color: "#f87171",
+                color: "var(--danger, #dc2626)",
                 marginBottom: 8,
-                letterSpacing: "-0.02em",
+                letterSpacing: 0,
               }}
             >
               Something went wrong
             </h1>
             <p
               style={{
-                color: "#8b929e",
+                color: "var(--text-secondary, #4b5563)",
                 fontSize: "0.875rem",
                 lineHeight: 1.65,
                 marginBottom: 16,
@@ -79,12 +78,12 @@ export class ErrorBoundary extends Component<Props, State> {
             {this.state.error && (
               <pre
                 style={{
-                  background: "#080b12",
-                  border: "1px solid rgba(255,255,255,0.07)",
+                  background: "var(--bg-raised, #f1f3f5)",
+                  border: "1px solid var(--border, #d9dee5)",
                   borderRadius: 8,
                   padding: "10px 12px",
                   fontSize: "0.75rem",
-                  color: "#f87171",
+                  color: "var(--danger, #dc2626)",
                   overflowX: "auto",
                   marginBottom: 20,
                   whiteSpace: "pre-wrap",
@@ -98,25 +97,25 @@ export class ErrorBoundary extends Component<Props, State> {
               <button
                 onClick={() => window.location.assign("/")}
                 style={{
-                  background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  background: "var(--brand, #2563eb)",
                   color: "#fff",
                   border: "none",
-                  borderRadius: 9999,
+                  borderRadius: 6,
                   padding: "8px 18px",
                   fontWeight: 600,
                   fontSize: "0.875rem",
                   cursor: "pointer",
                 }}
               >
-                ⬡ Back to Dashboard
+                Back to Home
               </button>
               <button
                 onClick={() => window.location.reload()}
                 style={{
-                  background: "rgba(26, 34, 51, 0.8)",
-                  color: "#e8eaf0",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  borderRadius: 9999,
+                  background: "var(--bg-surface, #ffffff)",
+                  color: "var(--text-primary, #17202a)",
+                  border: "1px solid var(--border, #d9dee5)",
+                  borderRadius: 6,
                   padding: "8px 18px",
                   fontWeight: 600,
                   fontSize: "0.875rem",

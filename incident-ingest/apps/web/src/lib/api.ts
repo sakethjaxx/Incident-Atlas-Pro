@@ -42,6 +42,31 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+// ── Access scope (shared by Upload + Search + Q&A) ───────────────────────────
+
+/** Which corpus a search / Q&A request runs against. */
+export type ScopeSource = "uploaded_documents" | "public_web";
+
+/** Scope selector the client sends on search / Q&A requests. */
+export interface SearchScope {
+  source: ScopeSource;
+  companies?: string[];
+}
+
+/** Scope the server echoes back on a response. */
+export interface AccessScope {
+  source: ScopeSource;
+  companies?: string[];
+  mode?: string;
+}
+
+/** Per-result provenance: why the caller is allowed to see this result. */
+export interface SourceAccess {
+  source: ScopeSource;
+  label: string;
+  accessReason: string;
+}
+
 // ── Sprint 2: Search contract (mirrors API_SPEC.md) ──────────────────────────
 
 /** A single evidence snippet attached to a search result. */
@@ -60,13 +85,17 @@ export interface SearchResult {
   keywordScore?: number;
   vectorScore?: number;
   evidence: Evidence[];
+  sourceAccess?: SourceAccess;
 }
 
 export interface SearchParams {
   q: string;
+  scope?: SearchScope;
   filterCompany?: string;
   filterSeverity?: string;
   filterTag?: string;
+  filterFrom?: string;
+  filterTo?: string;
   page?: number;
   limit?: number;
 }
@@ -85,6 +114,8 @@ export interface SearchResponse {
     from: string | null;
     to: string | null;
   };
+  scope?: AccessScope;
+  publicWeb?: { status: string; message: string } | null;
 }
 
 // ── Sprint 2: Similar incidents contract ─────────────────────────────────────
@@ -104,6 +135,124 @@ export interface SimilarResponse {
   limit: number;
 }
 
+// ── Sprint 3: Graph contract (mirrors API_SPEC.md) ───────────────────────────
+
+export type GraphNodeType = "service" | "symptom" | "root_cause" | "fix" | string;
+
+/** A graph entity node. */
+export interface GraphNode {
+  id: string;
+  name: string;
+  type: GraphNodeType;
+}
+
+/** A directed, evidence-backed relationship between two graph nodes. */
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  type: string;
+  evidence_section_id: string;
+}
+
+/** A recurring node cluster returned by GET /graph/patterns. */
+export interface GraphPattern {
+  incidentCount: number;
+  nodes: GraphNode[];
+}
+
+/** Full response from GET /graph/patterns. */
+export interface GraphPatternsResponse {
+  patterns: GraphPattern[];
+  page: number;
+  hasMore: boolean;
+}
+
+/** Full response from GET /graph/neighbors. */
+export interface GraphNeighborsResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GraphPatternsParams {
+  service?: string;
+  symptom?: string;
+  page?: number;
+}
+
+// ── Sprint 4: Q&A and Eval contract (mirrors API_SPEC.md) ────────────────────
+
+export interface QaPayload {
+  question: string;
+  scope?: SearchScope;
+  filters?: {
+    company?: string;
+    tags?: string[];
+    incidentIds?: string[];
+    from?: string;
+    to?: string;
+  };
+  options?: {
+    maxEvidenceSections?: number;
+    includeGraphContext?: boolean;
+    mode?: "answer" | "eval";
+  };
+}
+
+export interface QaCitation {
+  label: string;
+  incidentId: string;
+  sectionId: string;
+  sectionType: string;
+  title: string;
+  company: string | null;
+  date: string | null;
+  excerpt: string;
+  anchor: string;
+  retrievalScore: number;
+  sourceAccess?: SourceAccess;
+}
+
+export interface QaResponse {
+  status: "answered" | "refused";
+  answer: string | null;
+  citations: QaCitation[];
+  refusal?: {
+    reasonCode: "insufficient_evidence" | "unsupported_scope" | "unsafe_prompt" | "citation_validation_failed";
+    message: string;
+  };
+  evidenceCount: number;
+  promptVersion: string;
+  confidence?: number;
+  confidenceTier?: "high" | "medium" | "low";
+  scope?: AccessScope;
+  model: {
+    provider: string;
+    name: string;
+    version: string | null;
+  };
+  auditId: string;
+}
+
+export interface EvalLatestResponse {
+  runId: string;
+  status: "passed" | "failed" | "error";
+  mode: "fixture" | "live";
+  querySetVersion: string;
+  createdAt: string;
+  finishedAt: string;
+  gitSha: string | null;
+  retrievalConfig: Record<string, any>;
+  graphConfig: Record<string, any>;
+  promptVersion: string;
+  models: Array<{ provider: string; model: string; version: string | null }>;
+  metrics: Record<string, number | null>;
+  thresholds: Record<string, number>;
+  failures: any[];
+  artifactPath: string;
+  smallSampleWarning?: boolean;
+}
+
 // ── Job tracking ─────────────────────────────────────────────────────────────
 
 export interface JobStatus {
@@ -120,19 +269,70 @@ export interface UploadResponse {
   jobId: string;
   documentId: string;
   bullmqJobId?: string;
+  pollUrl?: string;
+  fileName?: string;
+  accepted?: number;
+  uploads?: UploadItem[];
+}
+
+export interface UploadItem {
+  fileName: string;
+  jobId: string;
+  documentId: string;
+  bullmqJobId?: string;
+  pollUrl: string;
+}
+
+export interface BatchUploadResponse {
+  accepted: number;
+  uploads: UploadItem[];
+  jobId?: string;
+  documentId?: string;
+  bullmqJobId?: string;
+  pollUrl?: string;
+  fileName?: string;
 }
 
 // ─── HTTP layer ───────────────────────────────────────────────────────────────
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+function isLoopbackApiUrl(value: string) {
+  try {
+    const base =
+      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const url = new URL(value, base);
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiUrl() {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+
+  // In Vite dev, prefer the built-in proxy for loopback targets so the app
+  // works the same from localhost, 127.0.0.1, and embedded browser surfaces.
+  if (import.meta.env.DEV && (!configured || isLoopbackApiUrl(configured))) {
+    return "/api";
+  }
+
+  return configured || "http://localhost:3001";
+}
+
+export const API_URL = resolveApiUrl();
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers ?? {});
+  const hasBody = options?.body !== undefined && options?.body !== null;
+  const isFormData =
+    typeof FormData !== "undefined" && options?.body instanceof FormData;
+
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -158,9 +358,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN as string | undefined;
 
-export async function uploadFile(file: File): Promise<UploadResponse> {
+export interface UploadOptions {
+  company?: string;
+}
+
+export async function uploadFile(
+  file: File,
+  opts: UploadOptions = {}
+): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  if (opts.company?.trim()) formData.append("company", opts.company.trim());
 
   const headers: HeadersInit = {};
   if (ADMIN_TOKEN) {
@@ -189,6 +397,41 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   return res.json() as Promise<UploadResponse>;
 }
 
+export async function uploadFiles(
+  files: File[],
+  opts: UploadOptions = {}
+): Promise<BatchUploadResponse> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  if (opts.company?.trim()) formData.append("company", opts.company.trim());
+
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+
+  const res = await fetch(`${API_URL}/ingest/upload`, {
+    method: "POST",
+    body: formData,
+    headers,
+  });
+
+  if (!res.ok) {
+    let message = `Upload failed: ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data && typeof data.error === "string") {
+        message = data.error;
+      }
+    } catch {
+      // Ignore JSON parse failure.
+    }
+    throw new Error(message);
+  }
+
+  return res.json() as Promise<BatchUploadResponse>;
+}
+
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
 /**
@@ -196,8 +439,16 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
  * The API returns a paginated envelope { data, total, page, limit };
  * we unwrap .data here so all consumers get a plain Incident[].
  */
-export function getIncidents(): Promise<Incident[]> {
-  return request<PaginatedResponse<Incident>>("/incidents").then((res) => {
+export function getIncidents(params?: {
+  page?: number;
+  limit?: number;
+}): Promise<Incident[]> {
+  const qs = new URLSearchParams();
+  if (params?.page) qs.set("page", String(params.page));
+  if (params?.limit) qs.set("limit", String(params.limit));
+
+  const path = qs.size > 0 ? `/incidents?${qs.toString()}` : "/incidents";
+  return request<PaginatedResponse<Incident>>(path).then((res) => {
     if (Array.isArray(res)) return res as unknown as Incident[];
     if (res && Array.isArray(res.data)) return res.data;
     return [];
@@ -224,15 +475,41 @@ export function getJobStatus(id: string): Promise<JobStatus> {
   return request<JobStatus>(`/jobs/${id}`);
 }
 
+/** GET /metadata/companies — get unique list of companies */
+export function getMetadataCompanies(): Promise<string[]> {
+  return request<string[]>("/metadata/companies");
+}
+
+/** GET /metadata/severities — get unique list of severities */
+export function getMetadataSeverities(): Promise<string[]> {
+  return request<string[]>("/metadata/severities");
+}
+
+/** GET /metadata/tags — get unique list of tags */
+export function getMetadataTags(): Promise<string[]> {
+  return request<string[]>("/metadata/tags");
+}
+
+/** GET /metadata/nodes — get unique list of graph node names */
+export function getMetadataNodes(type?: string): Promise<string[]> {
+  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
+  return request<string[]>(`/metadata/nodes${qs}`);
+}
+
 /**
  * GET /search?q=…&company=…&severity=…&tag=…&page=…&limit=…
  * Hybrid FTS + vector search. Returns scored results with evidence snippets.
  */
 export function searchIncidents(params: SearchParams): Promise<SearchResponse> {
   const qs = new URLSearchParams({ q: params.q });
+  if (params.scope?.source) qs.set("source", params.scope.source);
+  if (params.scope?.companies?.length)
+    qs.set("companies", params.scope.companies.join(","));
   if (params.filterCompany) qs.set("company", params.filterCompany);
   if (params.filterSeverity) qs.set("severity", params.filterSeverity);
   if (params.filterTag) qs.set("tag", params.filterTag);
+  if (params.filterFrom) qs.set("from", params.filterFrom);
+  if (params.filterTo) qs.set("to", params.filterTo);
   if (params.page) qs.set("page", String(params.page));
   if (params.limit) qs.set("limit", String(params.limit));
   return request<SearchResponse>(`/search?${qs.toString()}`);
@@ -253,4 +530,62 @@ export function getSimilarIncidents(
 /** GET /health — API health check */
 export function getHealth(): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/health");
+}
+
+/**
+ * GET /graph/patterns?service=…&symptom=…&page=…
+ * Returns recurring node clusters filtered by service or symptom name.
+ */
+export function getGraphPatterns(
+  params: GraphPatternsParams
+): Promise<GraphPatternsResponse> {
+  const qs = new URLSearchParams();
+  if (params.service) qs.set("service", params.service);
+  if (params.symptom) qs.set("symptom", params.symptom);
+  if (params.page) qs.set("page", String(params.page));
+  return request<GraphPatternsResponse>(`/graph/patterns?${qs.toString()}`);
+}
+
+/**
+ * GET /graph/neighbors?node_id=…&depth=…
+ * BFS traversal up to depth hops (max 2). Returns nodes and edges.
+ */
+export function getGraphNeighbors(
+  nodeId: string,
+  depth: 1 | 2 = 1
+): Promise<GraphNeighborsResponse> {
+  return request<GraphNeighborsResponse>(
+    `/graph/neighbors?node_id=${encodeURIComponent(nodeId)}&depth=${depth}`
+  );
+}
+
+/**
+ * POST /qa
+ * Ask a question against the incident corpus.
+ */
+export function postQa(payload: QaPayload): Promise<QaResponse> {
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+
+  return request<QaResponse>("/qa", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /eval/latest
+ * Get the latest evaluation run report.
+ */
+export function getEvalLatest(): Promise<EvalLatestResponse> {
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) {
+    headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+  }
+  return request<EvalLatestResponse>("/eval/latest", {
+    headers,
+  });
 }

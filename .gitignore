@@ -4,10 +4,12 @@
 # Local-only planning and AI coordination notes.
 # These files may exist on a developer machine but should not be committed.
 CLAUDE.md
+.claude/
 LINKEDIN_POST.md
 SPRINT_1_PENDING.md
 incident-ingest/CODEX_TASKS.md
 incident-ingest/agent_replies.md
+incident-ingest/apps/api/artifacts/
 incident-ingest/agents.yaml
 incident-ingest/docs/ANTIGRAVITY_AGENT_SETUP.md
 incident-ingest/docs/FILE_SCOPE_RULES.md

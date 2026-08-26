@@ -1,86 +1,205 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { uploadFile, getJobStatus, type JobStatus } from "../lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { uploadFiles, getJobStatus, type JobStatus, getMetadataCompanies } from "../lib/api";
+import Icon from "../components/Icon";
+
+const MAX_FILES_PER_BATCH = 20;
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+
+interface UploadJob {
+  fileName: string;
+  jobId: string;
+  documentId: string;
+  status: JobStatus | null;
+  error: string | null;
+}
+
+function isTerminalStatus(status?: JobStatus["status"]) {
+  return status === "completed" || status === "failed";
+}
+
+function formatSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+function statusLabel(job: UploadJob) {
+  if (job.error) return "Failed";
+  if (!job.status) return "Queued";
+  if (job.status.status === "waiting") return "Waiting";
+  if (job.status.status === "active") return "Processing";
+  if (job.status.status === "completed") return "Complete";
+  if (job.status.status === "failed") return "Failed";
+  return job.status.status;
+}
 
 export default function Upload() {
-  const [file, setFile] = useState<File | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [company, setCompany] = useState("");
+  const [companies, setCompanies] = useState<string[]>([]);
+  const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
-
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const selected = e.target.files[0];
-      setFile(selected);
+  useEffect(() => {
+    getMetadataCompanies().then(setCompanies).catch(console.error);
+  }, []);
+
+  const totalSelectedSize = files.reduce((sum, file) => sum + file.size, 0);
+  const completedCount = uploadJobs.filter((job) => job.status?.status === "completed").length;
+  const failedCount = uploadJobs.filter((job) => job.error || job.status?.status === "failed").length;
+
+  const activeJobIds = useMemo(
+    () =>
+      uploadJobs
+        .filter((job) => !job.error && !isTerminalStatus(job.status?.status))
+        .map((job) => job.jobId)
+        .join(","),
+    [uploadJobs]
+  );
+  const hasActiveJobs = activeJobIds.length > 0;
+
+  const selectFiles = (fileList: FileList | null) => {
+    const nextFiles = Array.from(fileList ?? []);
+    if (nextFiles.length === 0) return;
+
+    setFiles((prevFiles) => {
+      // Deduplicate by name + size
+      const existingKeys = new Set(prevFiles.map((f) => `${f.name}-${f.size}`));
+      const newFiles = nextFiles.filter((f) => !existingKeys.has(`${f.name}-${f.size}`));
+      const combined = [...prevFiles, ...newFiles];
+
+      if (combined.length > MAX_FILES_PER_BATCH) {
+        setError(`Select up to ${MAX_FILES_PER_BATCH} files per batch. You selected ${combined.length}.`);
+        return prevFiles;
+      }
+
+      const tooLarge = combined.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+      if (tooLarge) {
+        setError(`${tooLarge.name} exceeds the 10MB per-file limit.`);
+        return prevFiles;
+      }
+
       setError(null);
-      setJobId(null);
-      setJobStatus(null);
-    }
+      setUploadJobs([]);
+      return combined;
+    });
   };
 
-  const clearFile = () => {
-    setFile(null);
-    setJobId(null);
-    setJobStatus(null);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    selectFiles(event.target.files);
+    // Reset so the same file can be selected again if removed
+    event.target.value = "";
+  };
+
+  const clearFiles = () => {
+    setFiles([]);
+    setCompany("");
+    setUploadJobs([]);
     setError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!file) return;
+    if (files.length === 0) return;
+    if (!company.trim()) {
+      setError("Company is required before upload.");
+      return;
+    }
 
     setError(null);
-    setJobStatus(null);
+    setUploadJobs([]);
 
     try {
-      const res = await uploadFile(file);
-      setJobId(res.jobId);
-    } catch (err: any) {
-      setError(err.message || "Upload failed");
+      const response = await uploadFiles(files, { company: company.trim() });
+      const uploads =
+        response.uploads ??
+        (response.jobId && response.documentId
+          ? [
+              {
+                fileName: response.fileName ?? files[0]?.name ?? "Uploaded file",
+                jobId: response.jobId,
+                documentId: response.documentId,
+                bullmqJobId: response.bullmqJobId,
+                pollUrl: response.pollUrl ?? `/jobs/${response.jobId}`,
+              },
+            ]
+          : []);
+
+      if (uploads.length === 0) {
+        throw new Error("Upload response did not include any jobs.");
+      }
+
+      setUploadJobs(
+        uploads.map((upload, index) => ({
+          fileName: upload.fileName || files[index]?.name || `File ${index + 1}`,
+          jobId: upload.jobId,
+          documentId: upload.documentId,
+          status: null,
+          error: null,
+        }))
+      );
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (nextError: any) {
+      setError(nextError.message || "Upload failed");
     }
   };
 
-  // Polling effect
   useEffect(() => {
-    if (!jobId) return;
+    if (!activeJobIds) return;
 
-    let timeoutId: number;
+    let timeoutId: number | undefined;
     let isCancelled = false;
+    const jobIds = activeJobIds.split(",");
 
     const poll = async () => {
-      try {
-        const state = await getJobStatus(jobId);
-        if (isCancelled) return;
+      type PollResult = { jobId: string; status: JobStatus } | { jobId: string; error: string };
 
-        setJobStatus(state);
-
-        if (state.status === "completed") {
-          // If the job succeeded and we got the incident ID, we could navigate
-          // or just show the success banner. We'll wait 1.5s then navigate to it.
-          const incidentId = state.result?.incidentId;
-          if (incidentId) {
-            setTimeout(() => {
-              if (!isCancelled) navigate(`/incidents/${incidentId}`);
-            }, 1000);
+      const results: PollResult[] = await Promise.all(
+        jobIds.map(async (jobId) => {
+          try {
+            return { jobId, status: await getJobStatus(jobId) };
+          } catch (pollError: any) {
+            return {
+              jobId,
+              error: pollError.message || "Failed to poll job status.",
+            };
           }
-          return; // done polling
-        }
+        })
+      );
 
-        if (state.status === "failed") {
-          setError(state.error || state.result?.error || "Job failed during processing.");
-          return; // done polling
-        }
+      if (isCancelled) return;
 
-        // continue polling
+      setUploadJobs((currentJobs) =>
+        currentJobs.map((job) => {
+          const result = results.find((item) => item.jobId === job.jobId);
+          if (!result) return job;
+          if ("error" in result) {
+            return { ...job, error: result.error };
+          }
+
+          const state = result.status;
+          return {
+            ...job,
+            status: state,
+            error:
+              state.status === "failed"
+                ? state.error || state.result?.error || "Job failed during processing."
+                : job.error,
+          };
+        })
+      );
+
+      const stillActive = results.some(
+        (result) => !("error" in result) && !isTerminalStatus(result.status.status)
+      );
+      if (stillActive) {
         timeoutId = window.setTimeout(poll, 1000);
-      } catch (err: any) {
-        if (!isCancelled) {
-          setError(`Failed to poll job status: ${err.message}`);
-        }
       }
     };
 
@@ -88,47 +207,32 @@ export default function Upload() {
 
     return () => {
       isCancelled = true;
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [jobId, navigate]);
-
-  const isWorking =
-    jobId !== null &&
-    jobStatus?.status !== "completed" &&
-    jobStatus?.status !== "failed" &&
-    !error;
+  }, [activeJobIds]);
 
   return (
     <section className="fade-in">
       <div className="page-header">
-        <h1>Upload Incident</h1>
-        <p>
-          Upload an incident report (txt, md) — the pipeline will asynchronously
-          extract Impact, Timeline, Root Cause, and Fix sections.
-        </p>
+        <div className="page-header-title">
+          <h1>Upload</h1>
+          <p>Add incident reports to the archive. Each file is parsed as a separate incident.</p>
+        </div>
       </div>
 
-      {/* Success / Redirect banner */}
-      {jobStatus?.status === "completed" && (
-        <div className="alert alert-success" id="upload-success" style={{ marginBottom: 18 }}>
-          <span>✅</span>
+      {uploadJobs.length > 0 && completedCount > 0 && (
+        <div className="alert alert-success" id="upload-success" role="status" style={{ marginBottom: 18 }}>
+          <Icon name="checkCircle" size={18} />
           <div>
-            <strong>Processing complete!</strong>{" "}
-            {jobStatus.result?.incidentId ? (
-              <Link to={`/incidents/${jobStatus.result.incidentId}`} style={{ color: "inherit", fontWeight: 700, textDecoration: "underline" }}>
-                Redirecting to incident...
-              </Link>
-            ) : (
-              "Incident created."
-            )}
+            <strong>{completedCount} incident{completedCount === 1 ? "" : "s"} processed.</strong>{" "}
+            {failedCount > 0 ? `${failedCount} failed.` : "Ready to review."}
           </div>
         </div>
       )}
 
-      {/* Error banner */}
       {error && (
         <div className="alert alert-error" id="upload-error" style={{ marginBottom: 18 }}>
-          <span>⚠️</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Upload failed.</strong> {error}
           </div>
@@ -136,74 +240,146 @@ export default function Upload() {
       )}
 
       <div className="split-layout">
-        {/* Form */}
         <div className="card card-padded">
-          <h2 style={{ fontSize: "0.9375rem", marginBottom: 20 }}>Select File</h2>
+          <div className="panel-heading">
+            <h2>Select files</h2>
+          </div>
 
-          <form
-            id="upload-form"
-            onSubmit={handleSubmit}
-            style={{ display: "flex", flexDirection: "column", gap: 18 }}
-          >
+          <form id="upload-form" onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div className="form-group">
+              <label className="form-label" htmlFor="upload-company">
+                Company <span>*</span>
+              </label>
+              <input
+                id="upload-company"
+                className="form-input"
+                value={company}
+                onChange={(event) => setCompany(event.target.value)}
+                placeholder="Acme"
+                disabled={hasActiveJobs}
+                required
+                list="company-list"
+              />
+              <datalist id="company-list">
+                {companies.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              <p className="form-help">This becomes the document scope used by Search and Q&amp;A.</p>
+            </div>
+
             <div className="form-group">
               <label
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: "40px 20px",
-                  border: "2px dashed var(--border)",
-                  borderRadius: "var(--r-lg)",
-                  background: "var(--bg-overlay)",
-                  cursor: isWorking ? "not-allowed" : "pointer",
-                  transition: "border-color 0.2s, background 0.2s",
-                }}
-                className={isWorking ? "disabled" : ""}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (!isWorking) e.currentTarget.style.borderColor = "var(--brand)";
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  if (!isWorking) e.currentTarget.style.borderColor = "var(--border)";
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (!isWorking) {
-                    e.currentTarget.style.borderColor = "var(--border)";
-                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                      setFile(e.dataTransfer.files[0]);
-                      setError(null);
-                      setJobId(null);
-                      setJobStatus(null);
-                    }
+                className={`upload-dropzone ${isDragging ? "is-dragging" : ""}`}
+                role="button"
+                tabIndex={hasActiveJobs ? -1 : 0}
+                aria-disabled={hasActiveJobs}
+                aria-label="Select incident report files"
+                onKeyDown={(event) => {
+                  if ((event.key === "Enter" || event.key === " ") && !hasActiveJobs) {
+                    event.preventDefault();
+                    fileInputRef.current?.click();
                   }
                 }}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  if (!hasActiveJobs) setIsDragging(true);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (!hasActiveJobs) setIsDragging(true);
+                }}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  if (!hasActiveJobs) setIsDragging(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (!hasActiveJobs) {
+                    setIsDragging(false);
+                    selectFiles(event.dataTransfer.files);
+                  }
+                }}
+                style={{
+                  cursor: hasActiveJobs ? "not-allowed" : "pointer",
+                  opacity: hasActiveJobs ? 0.72 : 1,
+                  borderColor: isDragging ? "var(--brand)" : "var(--border)",
+                  backgroundColor: isDragging ? "var(--bg-overlay)" : "transparent",
+                  transition: "border-color 0.2s, background-color 0.2s",
+                }}
               >
-                <div style={{ fontSize: "2rem", marginBottom: 12 }}>📄</div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  {file ? file.name : "Click or drag a file to upload"}
+                <div className="upload-dropzone-icon" style={{ color: isDragging ? "var(--brand)" : "inherit" }}>
+                  <Icon name="upload" size={24} />
                 </div>
-                <div style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-                  {file
-                    ? `${(file.size / 1024).toFixed(1)} KB`
-                    : "Supports .txt and .md files up to 10MB"}
+                <div className="upload-dropzone-title">
+                  {files.length === 1
+                    ? files[0].name
+                    : files.length > 1
+                      ? `${files.length} files selected`
+                      : "Select incident reports"}
+                </div>
+                <div style={{ fontWeight: 600, marginBottom: 6, textAlign: "center", color: "var(--text-primary)" }}>
+                  {files.length > 0 ? `${formatSize(totalSelectedSize)} total` : "Click or drag files here"}
+                </div>
+                <div className="upload-dropzone-copy">
+                  {files.length > 0
+                    ? "Ready to queue for parsing."
+                    : `Supports .txt and .md files. Up to ${MAX_FILES_PER_BATCH} files, 10MB each.`}
                 </div>
                 <input
                   type="file"
                   id="file-upload"
                   accept=".txt,.md,text/plain,text/markdown"
+                  multiple
                   style={{ display: "none" }}
                   onChange={handleFileChange}
                   ref={fileInputRef}
-                  disabled={isWorking}
+                  disabled={hasActiveJobs}
                 />
               </label>
+
+              {files.length > 0 && !hasActiveJobs && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                  {files.map((f, i) => (
+                    <div
+                      key={`${f.name}-${f.size}-${f.lastModified}`}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        background: "var(--bg-overlay)",
+                        borderRadius: "var(--r-sm)",
+                        border: "1px solid var(--border)",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: "0.8125rem",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {f.name} ({formatSize(f.size)})
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ padding: 4 }}
+                        onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
+                        title={`Remove ${f.name}`}
+                        aria-label={`Remove ${f.name}`}
+                      >
+                        <Icon name="close" size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Polling / Job Status Indicator */}
-            {jobId && !error && jobStatus?.status !== "completed" && (
+            {uploadJobs.length > 0 && (
               <div
                 style={{
                   padding: 16,
@@ -212,51 +388,106 @@ export default function Upload() {
                   border: "1px solid var(--border)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: "0.8125rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: "0.8125rem", gap: 10, flexWrap: "wrap" }}>
                   <strong style={{ color: "var(--brand)" }}>
-                    {jobStatus?.status === "waiting" && "Waiting in queue..."}
-                    {jobStatus?.status === "active" && "Extracting sections..."}
-                    {(!jobStatus || !jobStatus.status) && "Initializing..."}
+                    {completedCount} of {uploadJobs.length} complete
                   </strong>
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {jobStatus?.progress ?? 0}%
+                  <span style={{ color: "var(--text-secondary)" }}>
+                    {failedCount > 0 ? `${failedCount} failed` : hasActiveJobs ? "Processing" : "Done"}
                   </span>
                 </div>
-                <div className="progress-bar">
+                <div
+                  className="progress-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={uploadJobs.length}
+                  aria-valuenow={completedCount}
+                  aria-label={`${completedCount} of ${uploadJobs.length} files processed`}
+                  style={{ marginBottom: 12 }}
+                >
                   <div
                     className="progress-fill"
                     style={{
-                      width: `${jobStatus?.progress ?? 0}%`,
-                      background: "linear-gradient(90deg, var(--brand-from), var(--brand-to))",
+                      width: `${(completedCount / uploadJobs.length) * 100}%`,
+                      background: "var(--brand)",
                       transition: "width 0.3s ease",
                     }}
                   />
                 </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {uploadJobs.map((job) => {
+                    const incidentId = job.status?.result?.incidentId;
+                    return (
+                      <div
+                        key={job.jobId}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) auto",
+                          gap: 12,
+                          alignItems: "center",
+                          paddingTop: 10,
+                          borderTop: "1px solid var(--border)",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 650, fontSize: "0.8125rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {job.fileName}
+                          </div>
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                            {job.error || `Progress ${job.status?.progress ?? 0}%`}
+                          </div>
+                        </div>
+                        {job.status?.status === "completed" && incidentId ? (
+                          <Link
+                            to={`/incidents/${incidentId}`}
+                            className="btn btn-secondary"
+                            style={{ fontSize: "0.75rem", padding: "6px 10px" }}
+                          >
+                            Open
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: "0.75rem", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                            {statusLabel(job)}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <button
                 type="submit"
                 id="submit-btn"
                 className="btn btn-primary"
-                disabled={!file || isWorking}
+                disabled={files.length === 0 || !company.trim() || hasActiveJobs}
               >
-                {isWorking ? (
+                {hasActiveJobs ? (
                   <>
                     <div className="spinner" />
-                    Uploading...
+                    Processing...
+                  </>
+                ) : files.length > 1 ? (
+                  <>
+                    <Icon name="upload" size={16} />
+                    {`Queue ${files.length} Files`}
                   </>
                 ) : (
-                  "⊕ Upload & Parse"
+                  <>
+                    <Icon name="upload" size={16} />
+                    Upload
+                  </>
                 )}
               </button>
 
-              {file && !isWorking && (
+              {(files.length > 0 || uploadJobs.length > 0) && !hasActiveJobs && (
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={clearFile}
+                  onClick={clearFiles}
                   style={{ fontSize: "0.8125rem" }}
                 >
                   Clear
@@ -266,32 +497,31 @@ export default function Upload() {
           </form>
         </div>
 
-        {/* Right panel — tips */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card card-padded">
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 14 }}>
-              📋 Section Format Guide
-            </h2>
+            <div className="panel-heading">
+              <h2>Recommended sections</h2>
+            </div>
             {[
               {
                 label: "Impact",
                 color: "var(--danger)",
-                desc: "Customer-visible effects, error rates, duration, scope",
+                desc: "Customer-visible effects, error rates, duration, and scope.",
               },
               {
                 label: "Timeline",
                 color: "var(--info)",
-                desc: "Chronological events — detection → response → resolution",
+                desc: "Chronological events from detection through mitigation and resolution.",
               },
               {
                 label: "Root Cause",
                 color: "var(--warning)",
-                desc: "Technical cause chain — what failed and why",
+                desc: "The technical cause chain and the conditions that made it possible.",
               },
               {
                 label: "Fix",
                 color: "var(--success)",
-                desc: "Mitigations, hotfixes, and follow-up preventions",
+                desc: "Mitigations, hotfixes, and the follow-up actions that prevent a repeat.",
               },
             ].map((item) => (
               <div
@@ -320,9 +550,9 @@ export default function Upload() {
                       marginBottom: 2,
                     }}
                   >
-                    {item.label}:
+                    {item.label}
                   </div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}>
                     {item.desc}
                   </div>
                 </div>
@@ -330,13 +560,12 @@ export default function Upload() {
             ))}
           </div>
 
-          <div className="card card-padded" style={{ opacity: 0.65 }}>
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 8 }}>
-              🌐 URL Crawl
-            </h2>
+          <div className="card card-padded" style={{ opacity: 0.75 }}>
+            <div className="panel-heading">
+              <h2>URL import</h2>
+            </div>
             <p style={{ fontSize: "0.8125rem" }}>
-              Automatic crawl from status pages and GitHub issues — coming in
-              Sprint 2.
+              Import from status pages and GitHub issues is planned.
             </p>
             <div style={{ marginTop: 12 }}>
               <input

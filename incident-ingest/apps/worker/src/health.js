@@ -7,6 +7,7 @@
  * Usage: call startHeartbeat() at worker startup, stopHeartbeat() on shutdown.
  */
 
+import { logger } from "./lib/logger.js";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import os from "node:os";
@@ -26,7 +27,7 @@ async function writeHeartbeat() {
       "utf-8"
     );
   } catch (err) {
-    console.warn("[worker:health] Failed to write heartbeat:", err.message);
+    logger.warn("[worker:health] Failed to write heartbeat:", err.message);
   }
 }
 
@@ -34,7 +35,7 @@ export function startHeartbeat() {
   writeHeartbeat(); // write immediately on start
   _timer = setInterval(writeHeartbeat, HEARTBEAT_INTERVAL_MS);
   _timer.unref(); // don't prevent process exit
-  console.log(`[worker:health] Heartbeat writing to ${HEALTH_FILE_PATH} every ${HEARTBEAT_INTERVAL_MS / 1000}s`);
+  logger.info(`[worker:health] Heartbeat writing to ${HEALTH_FILE_PATH} every ${HEARTBEAT_INTERVAL_MS / 1000}s`);
 }
 
 export function stopHeartbeat() {

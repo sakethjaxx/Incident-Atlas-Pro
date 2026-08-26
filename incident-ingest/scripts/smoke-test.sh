@@ -2,6 +2,7 @@
 set -euo pipefail
 
 API_URL="${API_URL:-http://localhost:3001}"
+WEB_URL="${WEB_URL:-http://localhost:5173}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"
 MAX_RETRIES="${MAX_RETRIES:-20}"
 POLL_INTERVAL_SECONDS="${POLL_INTERVAL_SECONDS:-2}"
@@ -45,7 +46,7 @@ request_json() {
 }
 
 wait_for_incident() {
-  local job_id="$1"
+  local job_id="${1//$'\r'/}"
   local counter=0
   local status_resp
   local status
@@ -86,11 +87,16 @@ wait_for_incident() {
 
 upload_file() {
   local file_path="$1"
+  local curl_file_path="$file_path"
   local upload_resp
   local job_id
 
+  if command -v cygpath >/dev/null 2>&1; then
+    curl_file_path="$(cygpath -w "$file_path")"
+  fi
+
   echo "==> Uploading $(basename "$file_path")..." >&2
-  upload_resp=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/ingest/upload" -F "file=@$file_path;type=text/plain")
+  upload_resp=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/ingest/upload" -F "file=@$curl_file_path;type=text/plain")
   echo "$upload_resp" | jq . >&2
 
   job_id=$(echo "$upload_resp" | jq -r '.jobId // empty')
@@ -100,6 +106,34 @@ upload_file() {
   fi
 
   echo "$job_id"
+}
+
+upload_batch() {
+  local file_path_a="$1"
+  local file_path_b="$2"
+  local curl_file_path_a="$file_path_a"
+  local curl_file_path_b="$file_path_b"
+  local upload_resp
+  local job_count
+
+  if command -v cygpath >/dev/null 2>&1; then
+    curl_file_path_a="$(cygpath -w "$file_path_a")"
+    curl_file_path_b="$(cygpath -w "$file_path_b")"
+  fi
+
+  echo "==> Batch uploading $(basename "$file_path_a") and $(basename "$file_path_b")..." >&2
+  upload_resp=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/ingest/upload" \
+    -F "files=@$curl_file_path_a;type=text/plain" \
+    -F "files=@$curl_file_path_b;type=text/plain")
+  echo "$upload_resp" | jq . >&2
+
+  job_count=$(echo "$upload_resp" | jq '.uploads | length')
+  if [ "$job_count" -ne 2 ]; then
+    echo "Batch upload response did not include exactly two jobs." >&2
+    return 1
+  fi
+
+  echo "$upload_resp" | jq -r '.uploads[].jobId' | tr -d '\r'
 }
 
 echo "==> Checking if API is reachable..."
@@ -138,11 +172,13 @@ The deploy caused database pool saturation and request timeouts.
 We rolled back, tuned the connection pool, and added deployment guards.
 EOF
 
-JOB_ID_A=$(upload_file "$TEST_FILE_A")
+mapfile -t BATCH_JOB_IDS < <(upload_batch "$TEST_FILE_A" "$TEST_FILE_B")
+JOB_ID_A="${BATCH_JOB_IDS[0]}"
+JOB_ID_B="${BATCH_JOB_IDS[1]}"
+
 INCIDENT_ID_A=$(wait_for_incident "$JOB_ID_A")
 echo "==> First incident processed: $INCIDENT_ID_A"
 
-JOB_ID_B=$(upload_file "$TEST_FILE_B")
 INCIDENT_ID_B=$(wait_for_incident "$JOB_ID_B")
 echo "==> Second incident processed: $INCIDENT_ID_B"
 
@@ -170,4 +206,112 @@ if [ "$SIMILAR_COUNT" -lt 1 ] || [ "$MATCHED_SIMILAR" -lt 1 ]; then
   exit 1
 fi
 
-echo "==> Sprint 2 Smoke Test SUCCESS! Exiting 0."
+echo "==> Testing Sprint 3 graph extraction and query APIs..."
+GRAPH_RAW_TEXT=$'Impact\nCheckout requests saw elevated error rate and request timeouts for 18 minutes.\n\nRoot Cause\nRoot cause was bad deploy to payment-api connection pool.\n\nFix\nFixed by rolling back the deploy and increasing the connection pool size.'
+GRAPH_PAYLOAD=$(jq -n \
+  --arg title "payment-api checkout outage" \
+  --arg company "payment-api" \
+  --arg date "2026-05-10T12:00:00.000Z" \
+  --arg severity "SEV2" \
+  --arg rawText "$GRAPH_RAW_TEXT" \
+  '{
+    title: $title,
+    company: $company,
+    date: $date,
+    severity: $severity,
+    tags: ["payment-api", "checkout", "graph-smoke"],
+    rawText: $rawText
+  }')
+
+GRAPH_INGEST_RESP=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/ingest/manual" \
+  -H "Content-Type: application/json" \
+  --data-binary "$GRAPH_PAYLOAD")
+echo "$GRAPH_INGEST_RESP" | jq .
+
+GRAPH_INCIDENT_ID=$(echo "$GRAPH_INGEST_RESP" | jq -r '.id // empty')
+if [ -z "$GRAPH_INCIDENT_ID" ] || [ "$GRAPH_INCIDENT_ID" = "null" ]; then
+  echo "Graph manual ingest did not return an incident id." >&2
+  exit 1
+fi
+
+SECTION_IDS_JSON=$(echo "$GRAPH_INGEST_RESP" | jq -c '[.sections[].id]')
+if [ "$SECTION_IDS_JSON" = "[]" ]; then
+  echo "Graph manual ingest did not return sections." >&2
+  exit 1
+fi
+
+echo "==> Querying graph patterns for payment-api..."
+PATTERNS_RESP=$(request_json --get --data-urlencode "service=payment-api" "$API_URL/graph/patterns")
+echo "$PATTERNS_RESP" | jq .
+
+ANCHOR_NODE_ID=$(echo "$PATTERNS_RESP" | jq -r '[.patterns[].nodes[] | select(.type == "service" and .name == "payment-api")][0].id // empty')
+if [ -z "$ANCHOR_NODE_ID" ] || [ "$ANCHOR_NODE_ID" = "null" ]; then
+  echo "Graph patterns did not include the expected payment-api service node." >&2
+  exit 1
+fi
+
+echo "==> Querying graph neighbors for payment-api node $ANCHOR_NODE_ID..."
+NEIGHBORS_RESP=$(request_json --get \
+  --data-urlencode "node_id=$ANCHOR_NODE_ID" \
+  --data-urlencode "depth=1" \
+  "$API_URL/graph/neighbors")
+echo "$NEIGHBORS_RESP" | jq .
+
+EDGE_COUNT=$(echo "$NEIGHBORS_RESP" | jq '.edges | length')
+if [ "$EDGE_COUNT" -lt 1 ]; then
+  echo "Graph neighbors returned no edges for payment-api." >&2
+  exit 1
+fi
+
+EVIDENCE_SECTION_ID=$(echo "$NEIGHBORS_RESP" | jq -r --argjson sectionIds "$SECTION_IDS_JSON" \
+  '[.edges[] | select(.evidence_section_id as $id | $sectionIds | index($id))][0].evidence_section_id // empty')
+if [ -z "$EVIDENCE_SECTION_ID" ] || [ "$EVIDENCE_SECTION_ID" = "null" ]; then
+  echo "No graph edge pointed back to a section from the smoke-test incident." >&2
+  exit 1
+fi
+
+EVIDENCE_ANCHOR=$(echo "$GRAPH_INGEST_RESP" | jq -r --arg id "$EVIDENCE_SECTION_ID" \
+  '.sections[] | select(.id == $id) | "#section-\(.type)-\(.id)"')
+if [ -z "$EVIDENCE_ANCHOR" ] || [ "$EVIDENCE_ANCHOR" = "null" ]; then
+  echo "Could not construct evidence anchor for section $EVIDENCE_SECTION_ID." >&2
+  exit 1
+fi
+
+echo "Graph evidence deep link verified: $WEB_URL/incidents/$GRAPH_INCIDENT_ID$EVIDENCE_ANCHOR"
+
+echo "==> Testing Sprint 4 Eval API..."
+EVAL_STATUS=$(curl -sS -o "$RESP_FILE" -w "%{http_code}" -X GET "${AUTH_ARGS[@]}" "$API_URL/eval/latest")
+if (( EVAL_STATUS >= 200 && EVAL_STATUS < 300 )); then
+  cat "$RESP_FILE" | jq .
+elif [ "$EVAL_STATUS" = "404" ]; then
+  cat "$RESP_FILE" | jq .
+  echo "Eval latest returned 404 cleanly because no eval run has completed yet."
+else
+  echo "Eval latest returned unexpected HTTP $EVAL_STATUS" >&2
+  cat "$RESP_FILE" >&2
+  echo >&2
+  exit 1
+fi
+
+echo "==> Testing Sprint 4 QA API (Citation path)..."
+QA_PAYLOAD=$(jq -n \
+  --arg q "What caused the checkout outage?" \
+  '{ question: $q }')
+QA_RESP=$(request_json -X POST "${AUTH_ARGS[@]}" "$API_URL/qa" \
+  -H "Content-Type: application/json" \
+  --data-binary "$QA_PAYLOAD")
+echo "$QA_RESP" | jq .
+QA_STATUS=$(echo "$QA_RESP" | jq -r '.status // empty')
+if [ "$QA_STATUS" != "answered" ] && [ "$QA_STATUS" != "success" ] && [ "$QA_STATUS" != "refused" ]; then
+  echo "QA endpoint did not return a valid status (answered, success, or refused)." >&2
+  exit 1
+fi
+if [ "$QA_STATUS" = "answered" ] || [ "$QA_STATUS" = "success" ]; then
+  QA_CITATION_COUNT=$(echo "$QA_RESP" | jq '.citations | length')
+  if [ "$QA_CITATION_COUNT" -lt 1 ]; then
+    echo "QA answered without citations." >&2
+    exit 1
+  fi
+fi
+
+echo "==> Sprint 4 Smoke Test SUCCESS! Exiting 0."

@@ -15,4 +15,13 @@ apps/**/.env.*.local
 # Runtime uploads are persisted via Docker volumes in production.
 uploads/
 
-docs/
+# Benchmark/eval outputs are local artifacts, never committed.
+artifacts/
+*.log
+
+# Ignore new files under docs/ by default ("docs/*" not "docs/" so individual
+# files can still be negated below — git cannot re-include inside an ignored dir).
+docs/*
+# Sprint 5 public docs are tracked despite the docs ignore above.
+!docs/OPEN_SOURCE_RAG_STACK.md
+!docs/TURBOQUANT_RAG_PLAN.md

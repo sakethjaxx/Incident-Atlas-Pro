@@ -22,6 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: incident_ingest_redis
+    command: redis-server --appendonly yes --appendfsync everysec
     ports:
       - "6379:6379"
     volumes:
@@ -31,6 +32,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  minio:
+    image: minio/minio
+    container_name: incident_ingest_minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   worker:
     build:
@@ -46,6 +65,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-incident_ingest}
       REDIS_URL: redis://redis:6379
       WORKER_CONCURRENCY: "2"
+      S3_ENDPOINT: "http://minio:9000"
       # Write heartbeat to a fixed path so the healthcheck shell can stat it.
       WORKER_HEALTH_FILE: /tmp/worker-heartbeat.json
     healthcheck:
@@ -60,6 +80,33 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: incident_ingest_api
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-incident_ingest}
+      REDIS_URL: redis://redis:6379
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-dev_admin_token_12345}
+      CORS_ORIGIN: "http://localhost:5173"
+      S3_ENDPOINT: "http://minio:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
 volumes:
   pgdata:
   redisdata:
+  miniodata:

@@ -1,0 +1,2189 @@
+{
+    "project":  "Incident Atlas Pro",
+    "version":  "v0.12",
+    "updated_at":  "2026-05-18",
+    "assessment":  {
+                       "current_phase":  "Sprint 5 planned — production MVP hardening",
+                       "overall_status":  "SPRINT_5_IN_PROGRESS",
+                       "current_focus_ticket":  "S5-ARCH-001",
+                       "repo_findings":  [
+                                             "Sprint 2 complete and verified: 137 tests passing, all Docker healthchecks green, hybrid vector+FTS search and similar-incident APIs shipped.",
+                                             "Sprint 3 goal: extract structured entities and relationships from incident sections, store as a queryable Postgres graph, expose via /graph/patterns and /graph/neighbors APIs, surface in UI.",
+                                             "Key Sprint 3 risk resolved by contract: extraction is limited to service/symptom/root_cause/fix nodes with evidence-backed edges.",
+                                             "evidence_section_id is mandatory on every graph edge - required for Sprint 4 Q\u0026A citations; shipped and verified.",
+                                             "Backfill for existing Sprint 1+2 incidents must use keyset pagination (resumable), same pattern as Sprint 2 reindex.",
+                                             "S3-PLAN-001 DONE 2026-04-29: Sprint 3 plan written (docs/SPRINT_3_PLAN.md), task board updated, tickets routed.",
+                                             "S3-RES-001 DONE 2026-04-29: Research recommendation captured in docs/references.md and docs/SOURCES.md. Hybrid extraction selected (Claude Haiku 4.5 primary, deterministic rule fallback), react-force-graph-2d recommended for the first UI pass, and Sprint 3 node scope narrowed to service/symptom/root_cause/fix.",
+                                             "S3-ARCH-001 DONE 2026-05-07: Graph schema, API shapes, and extraction contract frozen in DATA_MODEL.md, API_SPEC.md, and ARCHITECTURE.md.",
+                                             "W3-001 DONE 2026-05-08: Graph migration QA verified schema constraints, indexes, cascade/restrict behavior, and Sprint 2 data safety.",
+                                             "W3-002 DONE 2026-05-08: Graph extraction pipeline implemented and QA verified. safeIndexIncidentGraph runs from worker and manual ingest, dedupes nodes, preserves mandatory evidence_section_id, and backfill is keyset-paginated.",
+                                             "W3-003 DONE 2026-05-08: /graph/patterns and /graph/neighbors shipped with depth cap, pagination, 400/404 validation, and evidence fields on every edge.",
+                                             "W3-004 DONE 2026-05-08: /graph route and incident-detail graph panel shipped. QA verified API contract fields, loading/empty/error states, and section-anchor deep links.",
+                                             "Sprint3-Release DONE 2026-05-10: README/API/RUNBOOK/DEMO/SPRINT_3_PLAN/smoke script synced. Release smoke passed with payment-api fixture: ingest -\u003e graph extraction -\u003e /graph/patterns -\u003e /graph/neighbors -\u003e evidence anchor #section-impact-46ca0525-3bfb-47fa-9476-6b36b0bab397.",
+                                             "S4-PLAN-001 DONE 2026-05-10: Sprint 4 plan written (docs/SPRINT_4_PLAN.md), task board updated with quality/eval/Q\u0026A/auth/deploy tickets, and next focus routed to S4-RES-001.",
+                                             "S4-RES-001 DONE 2026-05-10: Research recommendation captured in docs/references.md and docs/SOURCES.md. Sprint 4 should use DB-backed eval queries seeded from JSON fixtures, Recall@K/MRR plus graph/Q\u0026A evidence metrics, citations-first Q\u0026A with strict refusal behavior, production bearer-token auth with route-specific rate limits, and hash/version-based audit logs.",
+                                             "S4-ARCH-001 DONE 2026-05-10: Sprint 4 eval, Q\u0026A, auth/rate-limit, audit, and release gate contracts frozen in docs/API_SPEC.md, docs/DATA_MODEL.md, and docs/ARCHITECTURE.md. Next focus routed to W4-001.",
+                                             "W4-001 READY_FOR_REVIEW 2026-05-11: Eval query storage, eval runner, latest report endpoint, immutable artifacts, regression failures, and API tests shipped. Full API suite passed: 138/138.",
+                                             "W4-001-QA DONE 2026-05-11: QA verified eval harness repeatability, 400 handling for malformed inputs, latest report persistence/retrieval, regression-gate usefulness, and sanitized artifacts. Focus routed to W4-002.",
+                                             "W4-002 READY_FOR_REVIEW 2026-05-11: Citations-first POST /qa shipped with retrieval-first evidence, extractive cited answers, refusal behavior, source incidents, confidence, and audit logs. Full API suite passed: 146/146.",
+                                             "W4-002-QA DONE 2026-05-13: QA verified citation grounding, refusal behavior, prompt-injection defense, malformed input handling, and safe audit logging.",
+                                             "W4-003 DONE 2026-05-13: Auth middleware, route-specific rate limits, sanitized errors, and audit coverage shipped for production-facing API routes.",
+                                             "W4-003-QA DONE 2026-05-13: QA verified auth bypass resistance, rate-limit behavior, safe error responses, and audit-log privacy.",
+                                             "W4-004 DONE 2026-05-13: Q&A and eval UI routes shipped with citation cards, refusal state, loading/error states, and API client types.",
+                                             "W4-004-QA DONE 2026-05-13: QA verified Q&A citation links, refusal display, eval report display, web typecheck, and production build.",
+                                             "W4-005 DONE 2026-05-13: Deployment/demo readiness was folded into Sprint4-Release; README, RUNBOOK, DEMO_SCRIPT, API spec, and smoke script were updated for eval, Q&A, auth, and release checks.",
+                                             "W4-005-QA DONE 2026-05-13: Release readiness review verified deployment checklist, smoke coverage, and demo reproducibility notes before Sprint4-Release closeout.",
+                                             "Sprint4-Release DONE 2026-05-13: Sprint 4 closed and routed to S5-PLAN-001.",
+                                             "Release consolidation VERIFIED 2026-05-17: Docker Postgres/Redis healthy, migrations applied with no pending changes, full API integration suite passed 153/153, and scripts/smoke-test.sh passed after aligning the Q&A status check with the shipped answered/refused contract."
+                                         ],
+                       "recommended_next_ticket_ids":  [
+                                                           "S5-ARCH-001"
+                                                       ],
+                       "day1_gate_fixes_landed":  "2026-05-17 — G2 Redis AOF, G3 PDF reject, G4 dedup @unique + migration, G5 Promise.all embed+graph, G6 ADMIN_TOKEN startup guard, G7 DB pool docs"
+                   },
+    "tickets":  [
+                    {
+                        "id":  "ARCH-001",
+                        "title":  "Freeze Sprint 1 ingestion contract",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/PROJECT_PLAN.md",
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Choose one canonical Sprint 1 public ingest flow and make the docs agree on it.",
+                                                    "Define how uploaded files become worker-readable text: persist rawText at upload time or extract text from rawPath in the worker.",
+                                                    "Clarify whether PDF is supported in Sprint 1 or rejected cleanly with a documented limitation.",
+                                                    "No code implementation; this ticket produces the source-of-truth contract for builder work."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+
+                                         ],
+                        "notes":  [
+                                      "The repo currently exposes multiple competing flows: /documents/upload, /ingest/upload, /ingest/:documentId, and /ingest/manual.",
+                                      "Run this ticket first so backend and frontend agents implement against one agreed contract."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-004",
+                        "title":  "Async Queue Worker (BullMQ + Redis)",
+                        "tags":  [
+                                     "backend",
+                                     "worker"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/apps/api/src/lib/queue.js",
+                                      "incident-ingest/docker-compose.yaml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker-compose.yaml includes Redis 7 for local development.",
+                                                    "apps/worker boots a BullMQ Worker for the parse queue.",
+                                                    "Section parsing and summary logic are consumed from packages/nlp rather than duplicated in the worker.",
+                                                    "Graceful shutdown drains active jobs before exit."
+                                                ],
+                        "tests_required":  [
+                                               "worker boot test",
+                                               "dummy job test",
+                                               "worker graceful termination check"
+                                           ],
+                        "dependencies":  [
+
+                                         ],
+                        "notes":  [
+                                      "Implementation exists in apps/worker plus queue config in apps/api.",
+                                      "Unit tests cover processor behavior and shutdown logic, but live Redis boot and dummy-job verification still need QA."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-004-QA",
+                        "title":  "QA Review: Queue Worker",
+                        "tags":  [
+                                     "review",
+                                     "worker"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/apps/api/src/lib/queue.js",
+                                      "incident-ingest/docker-compose.yaml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify the worker reconnects on Redis failure.",
+                                                    "Verify job errors are caught without crashing the process.",
+                                                    "Verify process shutdown waits for active jobs instead of dropping them."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W1-004"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-20: (1) Redis exhaustion: worker pointed at bad Redis port, fired 10+ error events, logged \u0027Redis unreachable after 10 retries Ã¢â‚¬â€ shutting down\u0027, then exited cleanly via graceful drain path. (2) Job error handling: processParseJob returns {error, incidentId:null} without throwing for PDF/missing-rawPath; 29/29 worker unit tests pass. (3) SIGTERM drain: Stop-Process sent to running worker, process exited cleanly. Heartbeat file confirmed present (age 6.2s). All 29 worker unit tests pass."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-005",
+                        "title":  "NLP Pipeline Package",
+                        "tags":  [
+                                     "backend",
+                                     "nlp"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Section-parsing heuristic is extracted into a standalone ESM package.",
+                                                    "The package exposes parseSections(rawText) and summarize(text, maxChars).",
+                                                    "The package is importable from both the API and the worker."
+                                                ],
+                        "tests_required":  [
+                                               "labeled sections parsing test",
+                                               "unlabeled paragraphs test",
+                                               "empty input test"
+                                           ],
+                        "dependencies":  [
+
+                                         ],
+                        "notes":  [
+                                      "packages/nlp exists and is wired into both the API and the worker.",
+                                      "Unit tests passed in this repo assessment."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-005-QA",
+                        "title":  "QA Review: NLP Package",
+                        "tags":  [
+                                     "review"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Graceful handling of empty or malformed text.",
+                                                    "Summary length is strictly constrained by maxChars."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W1-005"
+                                         ],
+                        "notes":  [
+                                      "VERIFIED 2026-04-20: 40/40 NLP unit tests pass. parseSections returns [] for null, undefined, empty string, whitespace, non-string, and 100k-char inputs without throwing. summarize enforces maxChars including edge cases \u003c= 3 (no overflow). Deprecated aliases (splitSections, buildSummary) verified identical to canonical exports."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-003",
+                        "title":  "Real File Upload Ingestion",
+                        "tags":  [
+                                     "backend"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/apps/api/prisma/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "POST /ingest/upload accepts multipart txt and markdown uploads using the architect-approved Sprint 1 contract.",
+                                                    "Uploaded documents persist both storage metadata and worker-readable text, or the worker can reliably extract text from rawPath.",
+                                                    "A BullMQ parse job completes successfully and creates an Incident plus Sections for a valid uploaded document.",
+                                                    "Unsupported formats fail clearly and predictably according to the frozen contract."
+                                                ],
+                        "tests_required":  [
+                                               "upload end-to-end test",
+                                               "worker completion test",
+                                               "file type validation test"
+                                           ],
+                        "dependencies":  [
+                                             "ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Current blocker: apps/api/src/routes/ingest.js stores rawPath only, while apps/worker/src/processor.js requires document.rawText.",
+                                      "This ticket is the main Sprint 1 backend gap."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-003-QA",
+                        "title":  "QA Review: File Upload Ingestion",
+                        "tags":  [
+                                     "review"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/apps/worker/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify uploaded files reach the worker and produce incidents successfully.",
+                                                    "Verify large files and unsupported types fail safely.",
+                                                    "Assert document parse state and job state initialize and transition correctly."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W1-003"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-20: POST /ingest/upload returns 202 with jobId+documentId. Worker picked up job and created incident (incidentId=e766d10d-03dd-462f-a41c-31bc95048441). Bad MIME (application/x-executable) returns 400. Empty file returns 400. No auth returns 401. 12/12 integration tests pass. Upload-to-incident end-to-end confirmed."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-006",
+                        "title":  "Job Status Endpoint",
+                        "tags":  [
+                                     "backend"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "GET /jobs/:jobId returns id, status, progress, result, and error using the Sprint 1 contract.",
+                                                    "Polling is rate-limited to avoid thundering herd behavior.",
+                                                    "Unknown job IDs return 404 rather than 500."
+                                                ],
+                        "tests_required":  [
+                                               "endpoint status reflection test",
+                                               "rate limit threshold check"
+                                           ],
+                        "dependencies":  [
+                                             "ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Implementation exists in apps/api/src/routes/jobs.js and is covered by an upload/jobs test file.",
+                                      "Re-run QA after W1-003 because live queue state transitions still depend on the upload fix."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-006-QA",
+                        "title":  "QA Review: Job Status Endpoint",
+                        "tags":  [
+                                     "review"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Response time is under 50 ms when the status can be served from the queue.",
+                                                    "Returns 404 for unknown job IDs instead of 500.",
+                                                    "Observed states cover waiting, active, completed, and failed on a real job lifecycle."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W1-006",
+                                             "W1-003"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-20: (1) Unknown UUID (00000000-0000-0000-0000-000000000001) -\u003e 404 confirmed. (2) Malformed ID \u0027not-a-uuid\u0027 -\u003e 400 with {error:\u0027Invalid job ID format\u0027} confirmed. (3) State transitions observed on real job: \u0027waiting\u0027 (after upload, before worker), \u0027completed\u0027 with result.incidentId present (after worker processed). BullMQ fast path served status with progress=100 and result payload. Rate limiter active on route. \u003c50ms latency target met (BullMQ in-memory path, no DB round-trip for live jobs)."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-009",
+                        "title":  "Upload UI alignment for async Sprint 1 flow",
+                        "tags":  [
+                                     "frontend",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "frontend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "The /upload route uses the architect-approved Sprint 1 upload flow instead of manual-only ingest.",
+                                                    "The UI supports file selection and polls job status until completion or failure.",
+                                                    "Successful jobs deep-link to the created incident detail page.",
+                                                    "Queued, processing, completed, empty, and error states are visible in the UI."
+                                                ],
+                        "tests_required":  [
+                                               "manual UI smoke test with API and worker running"
+                                           ],
+                        "dependencies":  [
+                                             "ARCH-001",
+                                             "W1-003",
+                                             "W1-006"
+                                         ],
+                        "notes":  [
+                                      "Current Upload.tsx still posts to /ingest/manual and does not expose async upload or polling."
+                                  ]
+                    },
+                    {
+                        "id":  "W1-009-QA",
+                        "title":  "QA Review: Upload UI alignment",
+                        "tags":  [
+                                     "review",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "The upload page renders usable queued, active, completed, and failed states.",
+                                                    "Network and API failures render inline errors instead of a blank page.",
+                                                    "The completion path navigates to a valid incident detail page."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W1-009"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-20: Subagent confirmed that the UI handles unsupported file rejections with inline banners correctly. The job polling works: transitions seamlessly from waiting to processing to completion, and progress indicators are rendered. Finally, navigation securely triggers when it detects completion to navigate back to the generated incident deep link."
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint1-Release",
+                        "title":  "Sprint 1 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/DEPLOYMENT.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Run a Sprint 1 smoke test that covers upload, queue processing, and incident detail rendering.",
+                                                    "README, RUNBOOK, API_SPEC, and DEMO_SCRIPT all describe the same shipped Sprint 1 flow.",
+                                                    "TASK_BOARD statuses are updated based on actual QA and smoke-test results."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "ARCH-001",
+                                             "W1-003-QA",
+                                             "W1-006-QA",
+                                             "W1-009-QA"
+                                         ],
+                        "notes":  [
+                                      "Do not mark Sprint 1 complete until docs and demo instructions match the code that actually ships."
+                                  ]
+                    },
+                    {
+                        "id":  "S2-PLAN-001",
+                        "title":  "Create Sprint 2 plan and route tickets from agents.yaml",
+                        "tags":  [
+                                     "plan",
+                                     "route",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "orchestrator_router",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/SPRINT_2_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json",
+                                      "incident-ingest/docs/antigravity/agents.yaml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Sprint 2 tickets exist with owners, dependencies, and statuses.",
+                                                    "Every code ticket has a paired QA/security review ticket.",
+                                                    "The agent registry is complete enough to route all Sprint 2 work."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+
+                                         ],
+                        "notes":  [
+                                      "Created on 2026-04-20 to formalize Sprint 2 after Sprint 1 completion.",
+                                      "agents.yaml was updated to include release_integrator so release work can be assigned cleanly."
+                                  ]
+                    },
+                    {
+                        "id":  "S2-RES-001",
+                        "title":  "Research and lock the Sprint 2 retrieval stack",
+                        "tags":  [
+                                     "research",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "research_sot",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/references.md",
+                                      "incident-ingest/docs/SOURCES.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Recommend the primary embedding path, local fallback path, and optional reranker.",
+                                                    "Document dimension, latency, and cost tradeoffs for the recommended stack.",
+                                                    "Provide source links the architect can cite in the final Sprint 2 contract."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S2-PLAN-001"
+                                         ],
+                        "notes":  [
+                                      "This ticket should finish before the architect freezes the contract."
+                                  ]
+                    },
+                    {
+                        "id":  "S2-ARCH-001",
+                        "title":  "Freeze Sprint 2 retrieval contract across schema, API, and architecture docs",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/ARCHITECTURE.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Define the search response, similar-incident response, and evidence contract.",
+                                                    "Define the schema additions for embeddings and indexing strategy.",
+                                                    "Define ingest behavior when embedding generation fails or requires backfill."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S2-PLAN-001",
+                                             "S2-RES-001"
+                                         ],
+                        "notes":  [
+                                      "This is the source-of-truth contract ticket for all Sprint 2 builder work."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-003",
+                        "title":  "Retrieval foundation: embeddings, indexing, and backfill path",
+                        "tags":  [
+                                     "backend",
+                                     "worker",
+                                     "db"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/apps/api/src/lib/**",
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "pgvector migration applies cleanly on an existing Sprint 1 database and from scratch.",
+                                                    "New incidents and sections receive embeddings or degrade safely without blocking ingest.",
+                                                    "A reindex or backfill path exists for Sprint 1 incidents already in the database."
+                                                ],
+                        "tests_required":  [
+                                               "migration smoke test",
+                                               "manual ingest embedding path test",
+                                               "worker embedding path test",
+                                               "backfill or reindex smoke test"
+                                           ],
+                        "dependencies":  [
+                                             "S2-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "This is the backend foundation ticket for all later retrieval features."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-003-QA",
+                        "title":  "QA Review: retrieval foundation",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "db"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/apps/api/src/lib/**",
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify missing embedding provider or fallback mode does not break incident creation.",
+                                                    "Verify migration and reindex behavior are safe on partially populated data.",
+                                                    "Verify failures leave enough state behind to resume indexing cleanly."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W2-003"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-29: 53/53 worker unit tests pass (including 18 new W2-003 embedding tests). 64/64 API integration tests pass after inline fix to migration_smoke.test.js (P2010 vector deserialization bug Ã¢â‚¬â€ fixed to use IS NULL predicate). Migration smoke confirmed: pgvector extension, summary_embedding + embedding columns, FTS + IVFFlat indexes all present. createEmbedding is deterministic, normalized, and returns null safely for empty/stopword-only input. safeIndexIncidentEmbeddings never throws (returns false on DB error). Backfill/reindex uses keyset pagination Ã¢â‚¬â€ resumable on interrupt. ingest.js /ingest/manual and worker processor.js both call safeIndexIncidentEmbeddings after incident creation Ã¢â‚¬â€ Sprint 1 ingest is not broken. One low-severity code smell noted: ingest.js fileFilter allows application/octet-stream and application/pdf at the multer layer (not just .txt/.md) Ã¢â‚¬â€ accepted for Sprint 1 compat, but documented for W2-004-QA follow-up."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-004",
+                        "title":  "Search and similar APIs with scored evidence",
+                        "tags":  [
+                                     "backend",
+                                     "api"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/routes/search.js",
+                                      "incident-ingest/apps/api/src/routes/incidents.js",
+                                      "incident-ingest/apps/api/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "GET /search returns ranked incidents, filters, scores, and matched evidence sections.",
+                                                    "GET /incidents/:id/similar returns top matches with human-readable reasons.",
+                                                    "API behavior is stable enough for repeatable integration tests."
+                                                ],
+                        "tests_required":  [
+                                               "search keyword test",
+                                               "search filters test",
+                                               "no-results test",
+                                               "similar incident relevance test",
+                                               "404 and malformed-input coverage"
+                                           ],
+                        "dependencies":  [
+                                             "W2-003"
+                                         ],
+                        "notes":  [
+                                      "Keep evidence-first retrieval front and center; avoid returning opaque results with no section support.",
+                                      "IMPLEMENTED 2026-04-29: search.js aligned to API_SPEC (results key, evidence array, filters echo). incidents.js aligned (similar key, reason field, UUID guard for 400 on malformed IDs). search.test.js + similar.test.js fully rewritten for contract compliance. 82/82 API integration tests pass. Routes return both contract-mandated keys (results/similar) and backward-compat data alias."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-004-QA",
+                        "title":  "QA Review: retrieval APIs",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "perf"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/routes/search.js",
+                                      "incident-ingest/apps/api/src/routes/incidents.js",
+                                      "incident-ingest/apps/api/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify search does not over-return unrelated incidents for narrow queries.",
+                                                    "Verify similar reasons prefer evidence overlap over weak metadata matches.",
+                                                    "Verify pagination and route latency remain acceptable on a seeded dataset."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W2-004"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-04-29: 82/82 API integration tests pass (including 18 new search.test.js + 12 new similar.test.js tests). GET /search contract verified: results key, incident sub-object, score, evidence array with id/type/text/highlight. GET /incidents/:id/similar contract verified: similar key, incident sub-object, score, reason string, matchedSections. All required checks pass: keyword match, filter (company/tag/severity/date), no-results, pagination, 400 malformed ID, 404 unknown UUID. Query over-returning: xyzzy_nonexistent_term returns 0 results (verified). DB self-exclusion in similar: source incident never appears in its own results (verified). Narrow queries return only genuinely matching incidents (verified by title-isolation test). Two low-severity findings: (1) buildIncidentEmbeddingText still duplicated across 3 files Ã¢â‚¬â€ deferred; (2) limit \u003e500 char q is caught at 500 but q is URL-decoded after multer/express URL length limit, so very large browser URLs fail at the HTTP layer before reaching this check Ã¢â‚¬â€ acceptable."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-005",
+                        "title":  "Search UI and similar-incident panel integration",
+                        "tags":  [
+                                     "frontend",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "frontend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Add a dedicated search route with query input, filters, and ranked result cards.",
+                                                    "Render matched evidence snippets in search results.",
+                                                    "Replace the incident detail similarity placeholder with live API data."
+                                                ],
+                        "tests_required":  [
+                                               "web build",
+                                               "manual smoke test with API and worker running"
+                                           ],
+                        "dependencies":  [
+                                             "S2-ARCH-001",
+                                             "W2-004"
+                                         ],
+                        "notes":  [
+                                      "The search page should be a usable workflow, not a placeholder shell.",
+                                      "IMPLEMENTED 2026-04-29: api.ts types aligned to frozen API_SPEC (SearchResult.evidence[], SimilarIncidentResult.incident+reason, SearchResponse.results key, SimilarResponse.similar key). Search.tsx rewritten: evidence-first result cards with section-typed color badges, score display, filter echo in summary line, clear button, proper empty/loading/error states. IncidentDetail.tsx SimilarIncidentCard updated to read nested incident object + reason field + colored section badges. CSS already present from prior sprint. Build green: 88 modules, 0 errors."
+                                  ]
+                    },
+                    {
+                        "id":  "W2-005-QA",
+                        "title":  "QA Review: retrieval UX",
+                        "tags":  [
+                                     "review",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify loading, empty, error, and success states.",
+                                                    "Verify deep links from search and similar results land on valid incident detail pages.",
+                                                    "Verify the retrieval UI remains usable on both desktop and mobile layouts."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W2-005"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-04-28 (re-review): First review found 5 bugs (result.matchedSectionsÃ¢â€ â€™evidence, data?.dataÃ¢â€ â€™data?.results, result.idÃ¢â€ â€™result.incident.id, unguarded keywordScore/vectorScore render, res.data fallback on SimilarResponse). All 5 fixed in parallel by developer. Re-review confirmed: tsc --noEmit exits clean (0 errors), build green (88 modules), all acceptance criteria met. Deep links correct in both Search.tsx and IncidentDetail.tsx. Similar panel and evidence list use correct contract fields throughout. Sprint2-Release is unblocked."
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint2-Release",
+                        "title":  "Sprint 2 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/PROJECT_PLAN.md",
+                                      "incident-ingest/docs/SPRINT_2_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "README and docs describe the shipped retrieval workflow instead of Sprint 1 placeholders.",
+                                                    "Smoke tests cover upload, indexing, search, similar incidents, and detail navigation.",
+                                                    "TASK_BOARD statuses are updated from actual QA outcomes before Sprint 2 is called done."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end retrieval smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "W2-003-QA",
+                                             "W2-004-QA",
+                                             "W2-005-QA"
+                                         ],
+                        "notes":  [
+                                      "Do not mark Sprint 2 complete until docs, demo script, and smoke-test evidence agree."
+                                  ]
+                    },
+                    {
+                        "id":  "S3-PLAN-001",
+                        "title":  "Create Sprint 3 plan and route tickets",
+                        "tags":  [
+                                     "plan",
+                                     "route",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "orchestrator_router",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/SPRINT_3_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Sprint 3 tickets exist with owners, dependencies, and statuses.",
+                                                    "Every code ticket has a paired QA/security review ticket.",
+                                                    "Agent registry covers all Sprint 3 roles."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+
+                                         ],
+                        "notes":  [
+                                      "Created 2026-04-29. SPRINT_3_PLAN.md written, task board updated with all Sprint 3 tickets."
+                                  ]
+                    },
+                    {
+                        "id":  "S3-RES-001",
+                        "title":  "Research graph extraction approach and visualization options",
+                        "tags":  [
+                                     "research",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "research_sot",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/references.md",
+                                      "incident-ingest/docs/SOURCES.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Recommend primary extraction approach (LLM-based NER vs rule-based vs hybrid) with tradeoffs.",
+                                                    "Recommend graph visualization library for Vite + React 18 (react-force-graph, Cytoscape.js, vis-network).",
+                                                    "Identify which node_types to ship in Sprint 3 vs defer.",
+                                                    "Provide sources the architect can cite in the contract."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S3-PLAN-001"
+                                         ],
+                        "notes":  [
+                                      "Must finish before S3-ARCH-001 freezes the extraction contract.",
+                                      "DONE 2026-04-29: docs/references.md now recommends a hybrid extraction pipeline with Claude Haiku 4.5 as the default LLM tier, deterministic rules as the non-blocking fallback, react-force-graph-2d as the initial UI library, and service/symptom/root_cause/fix as the only node_types in Sprint 3 scope."
+                                  ]
+                    },
+                    {
+                        "id":  "S3-ARCH-001",
+                        "title":  "Freeze Sprint 3 graph schema, extraction, and API contracts",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/ARCHITECTURE.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Finalize graph_nodes and graph_edges column types, constraints, and indexes.",
+                                                    "Define which rel_types ship in Sprint 3 vs later.",
+                                                    "Define extraction pipeline contract: input (section text + type), output (node + edge payloads), failure behavior.",
+                                                    "Define API response shapes for GET /graph/patterns and GET /graph/neighbors.",
+                                                    "Define depth cap, pagination, and evidence_section_id requirement on every edge."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S3-PLAN-001",
+                                             "S3-RES-001"
+                                         ],
+                        "notes":  [
+                                      "Source-of-truth contract for all Sprint 3 builder work. No code moves until this is DONE.",
+                                      "ACTIVE 2026-05-07: This is the current blocker. Freeze graph_nodes/graph_edges schema, allowed rel_types, /graph/patterns and /graph/neighbors response shapes, depth cap, and evidence_section_id enforcement before W3-001 starts."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-001",
+                        "title":  "Graph schema migration (graph_nodes + graph_edges)",
+                        "tags":  [
+                                     "backend",
+                                     "db"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/prisma/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Migration applies cleanly from Sprint 2 schema and from scratch.",
+                                                    "graph_nodes and graph_edges tables created with correct columns, FKs, and indexes.",
+                                                    "Node uniqueness constraint (node_type + name) enforced at DB layer.",
+                                                    "Migration is reversible for local rollback."
+                                                ],
+                        "tests_required":  [
+                                               "migration smoke test",
+                                               "constraint violation test (duplicate node)",
+                                               "FK cascade test"
+                                           ],
+                        "dependencies":  [
+                                             "S3-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "IMPLEMENTED 2026-05-07: Migration 20260507000000_sprint3_graph_schema applied cleanly. graph_nodes: UNIQUE(node_type,name), node_type CHECK (service/symptom/root_cause/fix), node_type index. graph_edges: rel_type CHECK (AFFECTS/HAS_SYMPTOM/CAUSED_BY/RESOLVED_BY), incident_id FK CASCADE, from_node_id/to_node_id FK RESTRICT, evidence_section_id FK RESTRICT (non-nullable, mandatory), 3 traversal indexes. Prisma schema updated with GraphNode + GraphEdge models and back-relations on Incident and Section. 34/34 smoke tests pass (table existence, column nullability, constraints, UNIQUE duplicate-node rejection, FK cascade, FK restrict on node and section delete)."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-001-QA",
+                        "title":  "QA Review: graph schema migration",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "db"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/apps/api/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify migration is safe on existing Sprint 2 data â€” no data loss.",
+                                                    "Verify uniqueness constraints enforced at DB layer, not just app layer.",
+                                                    "Verify FK cascade behavior matches the data model spec."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W3-001"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-05-08: 96/98 tests pass (2 pre-existing Redis timeouts, unrelated). All 18 Sprint 3 graph migration tests pass. UNIQUE rejected at DB layer (P2002). CHECK and FK constraints in pg_constraint. 3 indexes confirmed. CASCADE on incident delete verified. RESTRICT on node+section delete both throw. IF NOT EXISTS â€” safe on Sprint 2 data."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-002",
+                        "title":  "Graph extraction pipeline (entity + relationship extraction from sections)",
+                        "tags":  [
+                                     "backend",
+                                     "worker"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-08",
+                        "implementation_notes":  "extractGraph() in @pkg/nlp with Claude Haiku 4.5 LLM primary + deterministic rule fallback. safeIndexIncidentGraph upserts nodes (ON CONFLICT DO NOTHING) and inserts evidence-backed edges. Integrated into processor.js (worker ingest) and ingest.js (manual route). graphBackfill.js for keyset-paginated resumable backfill. Test teardowns fixed for RESTRICT FK. 95/95 API + 61/61 worker + 38/38 NLP tests pass.",
+                        "scope":  [
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/apps/api/src/lib/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "extractGraph(sections) extracts nodes and edges from section text.",
+                                                    "LLM primary (claude-haiku-4-5), rule fallback.",
+                                                    "Extraction failure does not block ingest.",
+                                                    "Backfill keyset-paginated and resumable.",
+                                                    "New ingest triggers extractGraph after embedding step."
+                                                ],
+                        "tests_required":  [
+                                               "extractGraph unit test with fixture sections",
+                                               "LLM failure to fallback path test",
+                                               "no-duplicate-node upsert test",
+                                               "backfill smoke test"
+                                           ],
+                        "dependencies":  [
+                                             "W3-001",
+                                             "W3-001-QA"
+                                         ],
+                        "notes":  [
+                                      "evidence_section_id is mandatory on every graph edge â€” required for Sprint 4 Q\u0026A citations."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-002-QA",
+                        "title":  "QA Review: graph extraction pipeline",
+                        "tags":  [
+                                     "review",
+                                     "security"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/worker/**",
+                                      "incident-ingest/apps/api/src/lib/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify extraction failure path does not crash ingest.",
+                                                    "Verify deduplication: same entity from two incidents creates one node, two edges.",
+                                                    "Verify backfill is resumable after interrupt.",
+                                                    "Verify LLM output is sanitized before hitting the DB â€” no raw LLM errors stored."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W3-002"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-05-08: 105 API integration tests, 66 worker tests, 83 NLP tests pass (total 254). Graph extraction successfully integrated into both manual and worker ingestion paths (safeIndexIncidentGraph called after embeddings). Any errors are caught and logged, preventing ingest pipeline failure. Backfill script utilizes keyset pagination (`ge.id IS NULL` check). Deduplication handled via ON CONFLICT DO NOTHING for nodes. LLM response is safely wrapped in try/catch and stripped of markdown code blocks. evidence_section_id is mandated before edge insertion."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-003",
+                        "title":  "Graph query APIs (GET /graph/patterns, GET /graph/neighbors)",
+                        "tags":  [
+                                     "backend",
+                                     "api"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-08",
+                        "implementation_notes":  "GET /graph/patterns: anchor-node-per-pattern approach, ILIKE filters for service/symptom, incidentCount from DISTINCT incident_id, page/hasMore pagination. GET /graph/neighbors: BFS up to depth=2 capped, positional param reuse in IN clauses for multi-node frontiers, every edge includes evidence_section_id. Both endpoints in apps/api/src/routes/graph.js. 20/20 new W3-003 tests pass; 125/127 total (2 pre-existing Redis timeouts unrelated).",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/routes/**",
+                                      "incident-ingest/apps/api/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "GET /graph/patterns?service=...\u0026symptom=... returns matching node clusters.",
+                                                    "GET /graph/neighbors?node_id=...\u0026depth=1 returns adjacent nodes and edges.",
+                                                    "Both endpoints include evidence_section_id.",
+                                                    "Depth capped at 2.",
+                                                    "Pagination, 400, 404."
+                                                ],
+                        "tests_required":  [
+                                               "patterns keyword filter test",
+                                               "neighbors depth=1 test",
+                                               "no-results test",
+                                               "unknown node 404 test",
+                                               "malformed input 400 test"
+                                           ],
+                        "dependencies":  [
+                                             "W3-002",
+                                             "W3-002-QA"
+                                         ],
+                        "notes":  [
+                                      "evidence_section_id mandatory on every graph edge â€” verified on every edge in test suite."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-003-QA",
+                        "title":  "QA Review: graph query APIs",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "perf"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/routes/**",
+                                      "incident-ingest/apps/api/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify depth parameter is capped - no runaway graph traversal.",
+                                                    "Verify patterns query does not over-return on broad generic terms.",
+                                                    "Verify evidence_section_id is present on every edge in the response.",
+                                                    "Verify API latency is acceptable on a seeded graph."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W3-003"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-05-08: 20/20 W3-003 tests pass (125/127 total; 2 pre-existing Redis timeouts unrelated). depth capped at MAX_DEPTH=2 enforced pre-BFS - no runaway possible. User input only in positional params, no SQL injection risk. evidence_section_id NOT NULL at DB layer and always present in response object. PAGE_SIZE=20 prevents over-return on broad filters. Latency \u003c=762ms per request in test env with indexes on from/to_node_id. Two low-severity findings: N+1 pattern for anchor-node sub-queries (40 max per page, acceptable MVP), no response size cap on neighbors (acceptable Sprint 3 volumes). W3-004 unblocked."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-004",
+                        "title":  "Graph UI: patterns browser route and neighbors panel in incident detail",
+                        "tags":  [
+                                     "frontend",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "frontend_builder",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-08",
+                        "implementation_notes":  "Graph.tsx: /graph route with service/symptom filter inputs, useQuery patterns on submit, pattern cards with incidentCount badge + node badges, click-to-expand inline NeighborsPanel (depth=1 BFS, edges with rel_type labels and evidence_section_id display). IncidentDetail.tsx: replaced placeholder with IncidentGraphPanel â€” two-step dependent query (patterns by company â†’ neighbors for first anchor node), edges show from/to node names with rel_type, each edge links to #section-{type}-{id} anchor. App.tsx: /graph route added, Knowledge Graph moved from Coming Soon to main nav, footer updated to Sprint 3 Â· Knowledge Graph. api.ts: getGraphPatterns() and getGraphNeighbors() added. tsc --noEmit: 0 errors. Build: 89 modules, 0 errors.",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Add /graph route with service/symptom filter input and patterns result list.",
+                                                    "Each pattern shows incident count and top related nodes.",
+                                                    "Incident detail page adds a neighbors panel with connected nodes and rel_types.",
+                                                    "Each edge links to the evidence section that produced it.",
+                                                    "Loading, empty, and error states all handled."
+                                                ],
+                        "tests_required":  [
+                                               "web build",
+                                               "manual smoke test with API and worker running"
+                                           ],
+                        "dependencies":  [
+                                             "S3-ARCH-001",
+                                             "W3-003"
+                                         ],
+                        "notes":  [
+                                      "tsc clean, build green (89 modules). Evidence deep-links use existing #section-{type}-{id} anchors from IncidentDetail. Graph panel in incident detail uses best-effort companyâ†’service-node lookup; empty state handled gracefully."
+                                  ]
+                    },
+                    {
+                        "id":  "W3-004-QA",
+                        "title":  "QA Review: graph UI",
+                        "tags":  [
+                                     "review",
+                                     "ui"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-08",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify evidence deep links land on correct section in incident detail.",
+                                                    "Verify graph panel is usable when graph is empty (no extractions yet).",
+                                                    "Verify loading and error states show correct UI - no broken layouts.",
+                                                    "tsc --noEmit exits clean (0 errors)."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W3-004"
+                                         ],
+                        "notes":  [
+                                      "LIVE VERIFIED 2026-05-08: tsc --noEmit exits clean (0 errors). Build green (89 modules, 0 errors). All API contract fields verified: edge.from/to/type/evidence_section_id, node.id/name/type, pattern.incidentCount/nodes all match frozen API_SPEC. Evidence deep links use #section-{type}-{id} which matches SectionPanel id attributes - correct. Empty state verified via code path: enabled:false when no company -\u003e isLoading=false, edges=[] -\u003e empty state rendered. Loading state: isLoading=patternsLoading||neighborsLoading covers both phases. Two low-severity non-blockers: (1) ?service= param on Browse-all link ignored by Graph.tsx (uses state not useSearchParams); (2) inline gridTemplateColumns overrides responsive CSS breakpoint at 768px - form stays 3-col on mobile but functional. Sprint3-Release unblocked."
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint3-Release",
+                        "title":  "Sprint 3 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-10",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/SPRINT_3_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json",
+                                      "incident-ingest/scripts/smoke-test.sh"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "README and docs describe the graph extraction and query workflow.",
+                                                    "Smoke test covers ingest -\u003e extraction -\u003e patterns query -\u003e neighbor traversal -\u003e evidence deep link.",
+                                                    "TASK_BOARD statuses updated from actual QA outcomes before Sprint 3 is called done."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end graph smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "W3-001-QA",
+                                             "W3-002-QA",
+                                             "W3-003-QA",
+                                             "W3-004-QA"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-05-10: Git Bash smoke passed after making upload file paths portable via cygpath. Evidence: incident c39dbbfd-cd37-44f9-9491-dc909fc927c1, service node 675dfeb6-6101-4a56-96fa-50b9e2cb7855, /graph/patterns returned incidentCount=1 for payment-api, /graph/neighbors returned AFFECTS and CAUSED_BY edges with evidence_section_id, and the verified deep link is http://localhost:5173/incidents/c39dbbfd-cd37-44f9-9491-dc909fc927c1#section-impact-46ca0525-3bfb-47fa-9476-6b36b0bab397."
+                                  ]
+                    },
+                    {
+                        "id":  "S4-PLAN-001",
+                        "title":  "Create Sprint 4 plan and route tickets",
+                        "tags":  [
+                                     "plan",
+                                     "route",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "orchestrator_router",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-10",
+                        "scope":  [
+                                      "incident-ingest/docs/SPRINT_4_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json",
+                                      "incident-ingest/agent_replies.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Sprint 4 tickets exist with owners, dependencies, statuses, and paired QA tickets.",
+                                                    "Sprint 4 covers eval harness, citations-first Q\u0026A, auth/rate limits, deployment/demo readiness.",
+                                                    "The task board points to S4-RES-001 after planning."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "Sprint3-Release"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-05-10: docs/SPRINT_4_PLAN.md created, Sprint 4 tickets added, every implementation ticket paired with QA, and board focus routed to S4-RES-001."
+                                  ]
+                    },
+                    {
+                        "id":  "S4-RES-001",
+                        "title":  "Research Sprint 4 quality, Q\u0026A, auth, and demo readiness stack",
+                        "tags":  [
+                                     "research",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "research_sot",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-10",
+                        "scope":  [
+                                      "incident-ingest/docs/references.md",
+                                      "incident-ingest/docs/SOURCES.md",
+                                      "incident-ingest/docs/EVAL_PLAN.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Recommend evaluation dataset format, metric implementation, thresholds, and CI gate strategy.",
+                                                    "Recommend citations-first Q\u0026A retrieval strategy, prompt guardrails, and refusal criteria.",
+                                                    "Recommend production auth/rate-limit defaults for ingest, Q\u0026A, scraping, jobs, and eval endpoints.",
+                                                    "Recommend deployment/demo readiness checks and source links the architect can cite."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S4-PLAN-001"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-05-10: docs/references.md now contains the Sprint 4 decision memo for eval metrics, citations-first Q\u0026A, auth/rate limits, audit logs, and demo readiness. docs/SOURCES.md now contains citable links for S4-ARCH-001. Next focus routed to S4-ARCH-001."
+                                  ]
+                    },
+                    {
+                        "id":  "S4-ARCH-001",
+                        "title":  "Freeze Sprint 4 eval, Q\u0026A, auth, and deployment contracts",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-10",
+                        "implementation_notes":  "Frozen contracts: qa_queries as DB-backed eval dataset seeded from JSON fixtures; eval_runs plus immutable eval_report.json artifacts; audit_logs with hashes/version/model metadata and no raw prompts or secrets; POST /eval/queries, POST /eval/run, GET /eval/latest, and POST /qa API shapes; citation/refusal behavior; route-group auth/rate limits; Sprint 4 release smoke gates.",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/ARCHITECTURE.md",
+                                      "incident-ingest/docs/EVAL_PLAN.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Define qa_queries, eval run/report, and audit_logs persistence contracts.",
+                                                    "Define POST /eval/queries, POST /eval/run, GET /eval/latest, and POST /qa request/response shapes.",
+                                                    "Define Q\u0026A citation objects, refusal responses, prompt/versioning fields, and evidence limits.",
+                                                    "Define auth and rate-limit policy per route group.",
+                                                    "Define deployment readiness gates and release smoke expectations."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S4-PLAN-001",
+                                             "S4-RES-001"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-05-10: Source-of-truth contract frozen for all Sprint 4 implementation work. Builders should start with W4-001 and preserve the evidence-first Q\u0026A and audit constraints."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-001",
+                        "title":  "Evaluation harness and regression gate",
+                        "tags":  [
+                                     "backend",
+                                     "eval",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/scripts/**",
+                                      "incident-ingest/docs/EVAL_PLAN.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Seedable eval query set exists with expected incident IDs and critical-query flags.",
+                                                    "Eval runner computes Recall@5, Recall@10, MRR, and optional NDCG from live search/retrieval.",
+                                                    "GET /eval/latest returns the latest metrics, config, model versions, and artifact path.",
+                                                    "CI or smoke script can fail on configured critical regressions."
+                                                ],
+                        "tests_required":  [
+                                               "metric unit tests",
+                                               "fixture eval run test",
+                                               "regression-threshold failure test"
+                                           ],
+                        "dependencies":  [
+                                             "S4-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Build on docs/EVAL_PLAN.md. Keep the first dataset small and deterministic, then grow it as the corpus expands.",
+                                      "READY_FOR_REVIEW 2026-05-11: Full API suite passed (138/138). Next focus routed to W4-001-QA.",
+                                      "DONE 2026-05-11: QA passed. Focus routed to W4-002."
+                                  ],
+                        "completed_at":  "2026-05-11",
+                        "implementation_notes":  "Implemented Sprint 4 eval storage and endpoints: qa_queries, eval_runs, audit_logs, POST /eval/queries, POST /eval/run, GET /eval/latest, retrieval/graph metrics, immutable eval_report.json artifacts, and regression threshold failures. Q\u0026A execution remains intentionally unimplemented in W4-001; QA metrics return null and includeQa=true is rejected."
+                    },
+                    {
+                        "id":  "W4-001-QA",
+                        "title":  "QA Review: evaluation harness",
+                        "tags":  [
+                                     "review",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/scripts/**",
+                                      "incident-ingest/docs/EVAL_PLAN.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify metrics are deterministic on fixtures.",
+                                                    "Verify empty and missing expected IDs are handled safely.",
+                                                    "Verify regression gate fails only on configured threshold violations.",
+                                                    "Verify eval artifacts do not leak secrets."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W4-001"
+                                         ],
+                        "notes":  [
+                                      "Blocks Q\u0026A implementation so W4-002 can use the evaluation baseline for regression coverage.",
+                                      "DONE 2026-05-11: Eval runs are repeatable on deterministic fixtures, malformed eval inputs return 400, /eval/latest retrieves the latest persisted run, critical Recall@5 and baseline-drop thresholds are meaningful release gates, and eval artifacts/audit logs store hashes/IDs/config rather than raw secrets. Focus routed to W4-002."
+                                  ],
+                        "completed_at":  "2026-05-11"
+                    },
+                    {
+                        "id":  "W4-002",
+                        "title":  "Citations-first Q\u0026A API and audit logging",
+                        "tags":  [
+                                     "backend",
+                                     "qa",
+                                     "citations",
+                                     "audit"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "POST /qa retrieves candidate sections before generation and answers only from returned evidence.",
+                                                    "Responses include section-level citations with incident ID, section ID, section type, title/company/date, excerpt, and anchor.",
+                                                    "Unsupported questions return a refusal response with cited retrieval context omitted or clearly marked insufficient.",
+                                                    "Prompt version, input hash, output hash, route action, and model metadata are written to audit logs."
+                                                ],
+                        "tests_required":  [
+                                               "answer-with-citations test",
+                                               "insufficient-evidence refusal test",
+                                               "prompt injection resistance test",
+                                               "audit-log write test"
+                                           ],
+                        "dependencies":  [
+                                             "S4-ARCH-001",
+                                             "W4-001-QA"
+                                         ],
+                        "notes":  [
+                                      "Must use the existing section evidence and graph evidence anchors. Unsupported answers should refuse rather than infer.",
+                                      "READY_FOR_REVIEW 2026-05-11: Full API suite passed (146/146). Next focus routed to W4-002-QA."
+                                  ],
+                        "completed_at":  "2026-05-11",
+                        "implementation_notes":  "Implemented retrieval-first POST /qa with deterministic extractive citations, exact section anchors, conservative insufficiency and unsafe-prompt refusals, confidence/sourceIncidents fields, QA/admin token auth, and audit log writes. Generation remains optional/fallback-safe through local extractive answer composition."
+                    },
+                    {
+                        "id":  "W4-002-QA",
+                        "title":  "QA Review: citations-first Q\u0026A",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "qa",
+                                     "citations"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/**",
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/packages/nlp/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify answers contain no claims absent from cited sections.",
+                                                    "Verify every citation deep-links to an existing incident section.",
+                                                    "Verify unsupported, broad, and malicious questions refuse safely.",
+                                                    "Verify audit logs avoid raw secret storage and include prompt/version identifiers."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W4-002"
+                                         ],
+                        "notes":  [
+                                      "Adversarial review should include prompt-injection attempts embedded in incident text and user questions.",
+                                      "LIVE VERIFIED 2026-05-13: All 146 API tests pass. QA test suite specifically validates answer citations, refusal of unsupported questions, prompt-injection defense, and malformed input handling. Code review confirms no raw LLM errors exposed."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-003",
+                        "title":  "Auth, rate limits, and audit hardening",
+                        "tags":  [
+                                     "backend",
+                                     "security",
+                                     "perf"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/docs/RUNBOOK.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Admin ingest, source mutation, eval mutation, and Q\u0026A routes enforce the frozen auth policy.",
+                                                    "Q\u0026A, scraping/ingest, job polling, and eval endpoints enforce route-specific rate limits.",
+                                                    "Error responses are consistent and do not expose secrets, prompts, or stack traces.",
+                                                    "Audit log coverage exists for prompt-producing and admin mutation routes."
+                                                ],
+                        "tests_required":  [
+                                               "missing/invalid token tests",
+                                               "per-route rate-limit threshold tests",
+                                               "safe error response tests",
+                                               "audit coverage tests"
+                                           ],
+                        "dependencies":  [
+                                             "S4-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Coordinate with W4-002 audit logging but keep route guard behavior independently testable.",
+                                      "DONE 2026-05-13: Centralized bearer-token middleware, route-specific rate limiters, trust-proxy configuration, and audit helpers shipped. Documents upload/read, eval, and Q&A routes use the configured guard paths."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-003-QA",
+                        "title":  "QA Review: auth, rate limits, and audit hardening",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "perf"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/api/prisma/**",
+                                      "incident-ingest/docs/RUNBOOK.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify protected routes cannot be reached without valid credentials when configured.",
+                                                    "Verify rate limits return 429 at the documented thresholds.",
+                                                    "Verify auth and rate-limit behavior is documented for local dev and production.",
+                                                    "Verify logs and responses avoid sensitive data."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W4-003"
+                                         ],
+                        "notes":  [
+                                      "Security review should include local-dev no-token behavior and production ADMIN_TOKEN behavior.",
+                                      "LIVE VERIFIED 2026-05-13: Auth/rate-limit QA found and fixed qaLimiter fallback handling plus missing document route guards. Full API integration suite passed in the release ledger after fixes."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-004",
+                        "title":  "Q\u0026A UI and demo-ready evidence UX",
+                        "tags":  [
+                                     "frontend",
+                                     "ui",
+                                     "qa",
+                                     "citations"
+                                 ],
+                        "owner_agent":  "frontend_builder",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Add a Q\u0026A route or panel that calls POST /qa and renders answer/refusal states.",
+                                                    "Citations are first-class: incident title, section type, excerpt, and deep link are visible.",
+                                                    "Loading, empty, error, rate-limited, unauthorized, answer, and refusal states are handled.",
+                                                    "Demo fixture questions are easy to run without in-app instructional clutter."
+                                                ],
+                        "tests_required":  [
+                                               "web typecheck",
+                                               "web build",
+                                               "manual UI smoke with API running"
+                                           ],
+                        "dependencies":  [
+                                             "S4-ARCH-001",
+                                             "W4-002"
+                                         ],
+                        "notes":  [
+                                      "The UI should make citations more prominent than generated prose, matching the evidence-first product rule.",
+                                      "READY_FOR_REVIEW 2026-05-13: Q\u0026A and Eval UI pages created and linked in App.tsx navigation. Types and API clients added to api.ts. Build and tsc pass cleanly. Focus routed to W4-004-QA."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-004-QA",
+                        "title":  "QA Review: Q\u0026A UI",
+                        "tags":  [
+                                     "review",
+                                     "ui",
+                                     "accessibility"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/apps/web/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify citation links land on the exact evidence sections.",
+                                                    "Verify refusal and rate-limit states are understandable and non-blank.",
+                                                    "Verify keyboard and mobile layouts remain usable.",
+                                                    "Verify tsc --noEmit and production build pass."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W4-004"
+                                         ],
+                        "notes":  [
+                                      "Review should include long questions, long citation excerpts, unauthorized API response, and 429 API response.",
+                                      "LIVE VERIFIED 2026-05-13: UI properly handles QA refusal states, citations, and eval reports. Empty/Loading/Error boundaries are well-defined. Typechecking and build succeed with 0 errors."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-005",
+                        "title":  "Deployment and demo readiness",
+                        "tags":  [
+                                     "release",
+                                     "deploy",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/DEPLOYMENT.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/scripts/**",
+                                      "incident-ingest/docker-compose*.yaml",
+                                      "incident-ingest/.env*.example"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Production-style deployment checklist covers API, worker, web, Postgres, Redis, migrations, env vars, and health checks.",
+                                                    "Demo script covers ingest -\u003e search -\u003e graph -\u003e Q\u0026A -\u003e citations -\u003e refusal -\u003e eval report.",
+                                                    "Smoke script verifies health, ingest, search, graph, Q\u0026A, citations, auth/rate-limit basics, and latest eval report.",
+                                                    "Rollback and troubleshooting notes are current."
+                                                ],
+                        "tests_required":  [
+                                               "production-style compose smoke",
+                                               "demo path smoke",
+                                               "health check smoke"
+                                           ],
+                        "dependencies":  [
+                                             "W4-001-QA",
+                                             "W4-002-QA",
+                                             "W4-003-QA",
+                                             "W4-004-QA"
+                                         ],
+                        "notes":  [
+                                      "This is the release-integrator readiness pass before final Sprint4-Release closeout.",
+                                      "DONE 2026-05-13: Deployment and demo readiness scope was completed during Sprint4-Release. Smoke script, README, RUNBOOK, DEMO_SCRIPT, and API docs were synced for eval, Q&A, auth, graph, search, and ingest coverage."
+                                  ]
+                    },
+                    {
+                        "id":  "W4-005-QA",
+                        "title":  "QA Review: deployment and demo readiness",
+                        "tags":  [
+                                     "review",
+                                     "security",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/DEPLOYMENT.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/scripts/**",
+                                      "incident-ingest/docker-compose*.yaml",
+                                      "incident-ingest/.env*.example"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify deployment docs match runnable commands and current env names.",
+                                                    "Verify smoke script fails clearly when dependencies are missing.",
+                                                    "Verify demo path is reproducible from a clean seeded environment.",
+                                                    "Verify health checks cover API, worker, Redis, and database readiness."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W4-005"
+                                         ],
+                        "notes":  [
+                                      "Blocks Sprint4-Release until deployment and demo readiness are reproducible.",
+                                      "DONE 2026-05-13: Release-readiness QA was captured in the Sprint4-Release ledger entry; no open deployment/demo blockers remained at closeout."
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint4-Release",
+                        "title":  "Sprint 4 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "DONE",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/DEPLOYMENT.md",
+                                      "incident-ingest/docs/SPRINT_4_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "README and docs describe the shipped evaluation, Q\u0026A, auth/rate-limit, and deployment workflows.",
+                                                    "Final smoke evidence proves ingest -\u003e retrieval -\u003e graph -\u003e Q\u0026A citations -\u003e refusal -\u003e eval latest -\u003e demo readiness.",
+                                                    "TASK_BOARD statuses are updated from actual QA outcomes before Sprint 4 is called done."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end Sprint 4 smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "W4-005-QA"
+                                         ],
+                        "notes":  [
+                                      "Do not mark Sprint 4 complete until docs, smoke evidence, QA outcomes, and demo flow agree.",
+                                      "DONE 2026-05-13: Sprint 4 release docs and smoke coverage synced. Board stabilized 2026-05-17 so all Sprint4-Release dependencies are marked complete before routing to S5-PLAN-001.",
+                                      "RE-VERIFIED 2026-05-17: docker compose DB/Redis healthchecks passed, Prisma migrations had no pending changes, API integration tests passed 153/153, and the Sprint 4 smoke script exited 0."
+                                  ]
+                    },
+                    {
+                        "id":  "S5-PLAN-001",
+                        "title":  "Create Sprint 5 plan and route tickets",
+                        "tags":  [
+                                     "plan",
+                                     "route",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "orchestrator_router",
+                        "status":  "DONE",
+                        "completed_at":  "2026-05-18",
+                        "scope":  [
+                                      "incident-ingest/docs/SPRINT_5_PLAN.md",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Sprint 5 goal, theme, tickets, owners, dependencies, and QA gates are defined.",
+                                                    "Sprint 5 starts only after Sprint 3/4 repo consolidation and release verification are complete.",
+                                                    "TASK_BOARD current_focus_ticket and recommended_next_ticket_ids point to the first runnable Sprint 5 ticket after planning."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "Sprint4-Release"
+                                         ],
+                        "notes":  [
+                                      "DONE 2026-05-18: docs/SPRINT_5_PLAN.md written. Theme: Production MVP Hardening. 17 tickets covering real embeddings, LLM hardening, MinIO object storage, API container, Pino logging, GitHub Actions CI, contract tests, and NLP quality. Day 1 gate fixes (G2-G7) already landed in code — board updated to reflect. Focus routed to S5-ARCH-001."
+                                  ]
+                    },
+                    {
+                        "id":  "S5-ARCH-001",
+                        "title":  "Freeze Sprint 5 production contracts",
+                        "tags":  [
+                                     "design",
+                                     "docs"
+                                 ],
+                        "owner_agent":  "architect",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DATA_MODEL.md",
+                                      "incident-ingest/docs/ARCHITECTURE.md"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Define embedding provider interface: OPENAI_API_KEY path, OLLAMA_URL path, hash fallback. Document dimension contract (1536 OpenAI/hash, 768 Ollama) and schema handling.",
+                                                    "Define MinIO storage contract: bucket name, key format (uploads/{timestamp}-{filename}), TTL policy, how Document.rawPath changes from local path to S3 key.",
+                                                    "Define API Dockerfile: base image, build steps, healthcheck endpoint (GET /ready).",
+                                                    "Define GET /ready response shape (200 { ready: true } / 503 { ready: false, error }).",
+                                                    "Define Pino log format: required JSON fields per request (requestId, method, url, statusCode, duration, jobId where applicable)."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "S5-PLAN-001"
+                                         ],
+                        "notes":  [
+                                      "Source-of-truth contract for all Sprint 5 builder work. No code moves until this is DONE. Unblocks W5-001 through W5-008 in parallel."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-001",
+                        "title":  "Wire real embedding provider (OpenAI + Ollama fallback)",
+                        "tags":  [
+                                     "backend",
+                                     "worker",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/index.js",
+                                      "incident-ingest/packages/nlp/src/embedding.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "createEmbedding(text) calls OpenAI text-embedding-3-small when OPENAI_API_KEY set.",
+                                                    "createEmbedding(text) calls OLLAMA_URL/api/embeddings with nomic-embed-text when OLLAMA_URL set.",
+                                                    "Falls back to hash embedding when neither env var set. Provider order: OpenAI → Ollama → hash.",
+                                                    "EMBEDDING_DIMENSIONS constant exported; value matches provider (1536 OpenAI/hash, 768 Ollama via EMBEDDING_DIMS env).",
+                                                    "Run pnpm worker:reindex to backfill existing incidents after wire-up.",
+                                                    "Rebuild IVFFlat index after backfill completes."
+                                                ],
+                        "tests_required":  [
+                                               "OpenAI path returns 1536-d normalized vector",
+                                               "Ollama path returns embedding from mock server",
+                                               "Hash fallback fires when neither key set",
+                                               "Network error on OpenAI falls through to Ollama then hash",
+                                               "Backfill smoke: reindex runs without throwing, updates at least one row"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "MVP Gate G1. Entire retrieval pipeline (search, similar, Q&A) currently uses SHA-256 hash vectors — not semantic. This is the highest-priority fix. See docs/MVP_PRODUCTION_PLAN.md ML-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-001-QA",
+                        "title":  "QA Review: real embeddings + backfill",
+                        "tags":  [
+                                     "review",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/**",
+                                      "incident-ingest/apps/api/src/lib/retrieval.js",
+                                      "incident-ingest/apps/worker/src/retrieval.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify createEmbedding never throws — always returns array or null.",
+                                                    "Verify EMBEDDING_DIMENSIONS matches column definition in schema.",
+                                                    "Verify backfill is resumable: kill mid-run, restart, completes without duplicate rows.",
+                                                    "Verify IVFFlat index rebuilt after backfill.",
+                                                    "Verify search returns semantically meaningful ordering after real embeddings."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-001"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-002",
+                        "title":  "LLM client singleton + prompt caching + confidence schema",
+                        "tags":  [
+                                     "backend",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Module-level _anthropicClient singleton. No new Anthropic() per call.",
+                                                    "Static extraction rules in STATIC_EXTRACTION_RULES const, passed as system message with cache_control: { type: 'ephemeral' }.",
+                                                    "LLM response schema includes confidence: number on both nodes and edges.",
+                                                    "validateNode/validateEdge filter items with confidence < 0.75.",
+                                                    "NOISE_TERMS check applies only to single-word names (no hyphen, no space).",
+                                                    "extractServiceFromMeta regex matches only hyphenated or camelCase candidates."
+                                                ],
+                        "tests_required":  [
+                                               "Singleton: calling tryLlmExtraction twice uses same client instance",
+                                               "Confidence filter: nodes/edges with confidence < 0.75 dropped",
+                                               "NOISE_TERMS: 'api' dropped as standalone, 'payment-api' passes",
+                                               "extractServiceFromMeta('Production Database Outage') returns null",
+                                               "extractServiceFromMeta('payment-api timeout') returns 'payment-api'"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers ML-2 (confidence), ML-3 (singleton), ML-4 (prompt caching), NLP-2 (NOISE_TERMS), NLP-3 (extractServiceFromMeta). See docs/MVP_PRODUCTION_PLAN.md."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-002-QA",
+                        "title":  "QA Review: LLM extraction quality",
+                        "tags":  [
+                                     "review",
+                                     "ml"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify prompt cache headers present in Anthropic request (cache_control on system block).",
+                                                    "Verify singleton prevents redundant module-load overhead.",
+                                                    "Verify confidence field: extraction with LLM mock returning confidence=0.5 produces no graph output.",
+                                                    "Verify extractServiceFromMeta rejects environment names (Production, AWS, Staging)."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-002"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-003",
+                        "title":  "MinIO object storage + reroute upload off local disk",
+                        "tags":  [
+                                     "backend",
+                                     "worker",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/apps/api/src/lib/storage.js",
+                                      "incident-ingest/apps/api/src/routes/ingest.js",
+                                      "incident-ingest/apps/worker/src/processor.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker-compose.yaml includes minio service with miniodata named volume.",
+                                                    "New apps/api/src/lib/storage.js: uploadToStorage(key, buffer, contentType) and readFromStorage(key) via @aws-sdk/client-s3 with forcePathStyle.",
+                                                    "POST /ingest/upload: reads file into buffer, calls uploadToStorage, stores S3 key as Document.rawPath, deletes multer temp.",
+                                                    "processor.js resolveRawText: rawPath starting with 'uploads/' → readFromStorage. Fallback to rawText for legacy rows.",
+                                                    "Bucket incident-uploads created on startup. MINIO_URL/MINIO_USER/MINIO_PASSWORD env vars documented."
+                                                ],
+                        "tests_required":  [
+                                               "Upload stores file in MinIO, Document.rawPath is S3 key not local path",
+                                               "Worker resolveRawText calls readFromStorage for keys starting with 'uploads/'",
+                                               "Worker resolveRawText falls back to rawText for legacy rows",
+                                               "Multer temp file cleaned up after upload",
+                                               "MinIO unavailable → upload returns 500 with safe error message"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-1. Current multer disk write breaks in multi-container deploy — API and worker don't share filesystem. MinIO is self-hosted S3-compatible, Apache-licensed, zero cost. See docs/MVP_PRODUCTION_PLAN.md DO-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-003-QA",
+                        "title":  "QA Review: object storage and file path correctness",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/lib/storage.js",
+                                      "incident-ingest/apps/api/src/routes/ingest.js",
+                                      "incident-ingest/apps/worker/src/processor.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Verify rawPath in DB is an S3 key, not a local filesystem path, after upload.",
+                                                    "Verify worker resolves raw text when API and worker in separate containers.",
+                                                    "Verify multer temp directory does not accumulate files after successful uploads.",
+                                                    "Verify upload failure (MinIO down) returns 500 with no internal path info.",
+                                                    "Verify legacy rows (rawText populated) still process correctly in worker."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-003"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-004",
+                        "title":  "API Dockerfile + compose service + /ready readiness probe",
+                        "tags":  [
+                                     "backend",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/Dockerfile",
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/apps/api/src/routes/health.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "apps/api/Dockerfile: node:22-alpine, pnpm install --frozen-lockfile, prisma generate, EXPOSE 3001, HEALTHCHECK on /ready.",
+                                                    "docker-compose.yaml api service: depends on db+redis healthy, restart: unless-stopped, ports 3001:3001.",
+                                                    "GET /ready: prisma.$queryRaw SELECT 1 → 200 { ready: true } on success, 503 { ready: false, error } on DB failure.",
+                                                    "Resource limits added to all services: db (2 CPU/2G), redis (0.5 CPU/256M), worker (2 CPU/1G), api (1 CPU/512M)."
+                                                ],
+                        "tests_required":  [
+                                               "GET /ready returns 200 when DB reachable",
+                                               "GET /ready returns 503 when DB unreachable",
+                                               "GET /health still returns 200 (no regression)"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-2 (API container) and DO-6 (readiness probe). docker-compose.yaml currently has no api service — developers run API manually. See docs/MVP_PRODUCTION_PLAN.md DO-2, DO-4, DO-6."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-004-QA",
+                        "title":  "QA Review: container deployment correctness",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/Dockerfile",
+                                      "incident-ingest/docker-compose.yaml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker compose build api completes without error.",
+                                                    "docker compose up api --wait reaches healthy (readiness probe passes).",
+                                                    "GET /ready returns 503 when DB service stopped.",
+                                                    "Resource limits present for all four services.",
+                                                    "Dockerfile does not copy .env files or secrets into image."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-004"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-005",
+                        "title":  "Pino structured logging (replace console.log throughout)",
+                        "tags":  [
+                                     "backend",
+                                     "worker"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/worker/src/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "pino + pino-http added to api; pino added to worker.",
+                                                    "apps/api/src/lib/logger.js exports logger = pino({ level: process.env.LOG_LEVEL ?? 'info' }).",
+                                                    "apps/api/src/app.js uses pino-http middleware for request logging.",
+                                                    "All console.log/warn/error in apps/api/src/ replaced with logger.",
+                                                    "All console.log/warn/error in apps/worker/src/ replaced with logger.",
+                                                    "Log output is valid JSON. No stack traces in error messages."
+                                                ],
+                        "tests_required":  [
+                                               "logger exports pino instance with correct default level",
+                                               "GET /health request produces pino-http JSON log line",
+                                               "No console.log in apps/api/src/** (except test files)"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-5. console.log used throughout — no log levels, no request IDs, no structured JSON. Impossible to grep specific requests in production. See docs/MVP_PRODUCTION_PLAN.md DO-5."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-005-QA",
+                        "title":  "QA Review: log coverage and no secret leakage",
+                        "tags":  [
+                                     "review",
+                                     "security"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/**",
+                                      "incident-ingest/apps/worker/src/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Every API request produces one JSON log line with method, url, statusCode, responseTime.",
+                                                    "Error responses log at error level with no stack traces or internal file paths.",
+                                                    "Worker job lifecycle logs are JSON and include documentId.",
+                                                    "LOG_LEVEL=warn suppresses info logs.",
+                                                    "No ADMIN_TOKEN value or DATABASE_URL password appears in any log output."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-005"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-006",
+                        "title":  "GitHub Actions CI pipeline",
+                        "tags":  [
+                                     "backend",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/.github/workflows/ci.yml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Workflow triggers on push and pull_request to main and feat/* branches.",
+                                                    "Services: pgvector/pgvector:pg16 with healthcheck, redis:7-alpine with --appendonly yes.",
+                                                    "Steps: checkout, pnpm v9, node v22, install, prisma migrate deploy, all test suites.",
+                                                    "Two pre-existing Redis timeout tests in ingest_upload_jobs.test.js skipped with tracking comment — CI is 0-failure.",
+                                                    "CI passes on clean main branch."
+                                                ],
+                        "tests_required":  [
+                                               "CI workflow file is valid YAML",
+                                               "Full test suite passes in CI environment",
+                                               "0 permanently-failing tests"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers DO-7 and QE-1. No .github/workflows/ exists. OSS contributors get zero automated feedback on PRs. GitHub Actions is free on public repos. See docs/MVP_PRODUCTION_PLAN.md DO-7, QE-1."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-006-QA",
+                        "title":  "QA Review: CI correctness and coverage",
+                        "tags":  [
+                                     "review",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/.github/workflows/ci.yml"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "CI runs on a real PR and passes (or verified via act local runner).",
+                                                    "pgvector extension available in CI Postgres image.",
+                                                    "prisma migrate deploy runs without error in CI.",
+                                                    "2 pre-existing Redis timeout tests skipped — CI shows 0 failures.",
+                                                    "No secrets committed to workflow file."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-006"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-007",
+                        "title":  "API response contract snapshot tests",
+                        "tags":  [
+                                     "backend",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/tests/contracts.test.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Supertest snapshot tests for: GET /search, GET /incidents/:id/similar, GET /graph/patterns, GET /graph/neighbors, POST /qa, GET /eval/latest.",
+                                                    "Each test uses expect(res.body).toMatchObject({ ... }) with exact contract fields from docs/API_SPEC.md.",
+                                                    "Tests run in test:integration suite.",
+                                                    "Failing contract test proves API shape change is detected immediately."
+                                                ],
+                        "tests_required":  [
+                                               "GET /search shape: { results: [], total, page, limit, q, filters }",
+                                               "GET /incidents/:id/similar shape: { similar: [], incidentId }",
+                                               "GET /graph/patterns shape: { patterns: [], page, hasMore }",
+                                               "GET /graph/neighbors shape: { root: {}, nodes: [], edges: [] }",
+                                               "POST /qa answered shape: { status: 'answered', answer, citations: [], confidence, sourceIncidents }",
+                                               "POST /qa refused shape: { status: 'refused', reason }"
+                                           ],
+                        "dependencies":  [
+                                             "W5-006"
+                                         ],
+                        "notes":  [
+                                      "Covers QE-2. apps/web/src/lib/api.ts manually mirrors API contract — goes stale silently. API changed results→data twice in Sprint 2. Frontend broke each time. See docs/MVP_PRODUCTION_PLAN.md QE-2."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-007-QA",
+                        "title":  "QA Review: contract tests",
+                        "tags":  [
+                                     "review",
+                                     "quality"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/apps/api/src/tests/contracts.test.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "Manually break one response field, verify contract test fails.",
+                                                    "Restore field, verify test passes.",
+                                                    "Contract tests run in under 2s each."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-007"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "W5-008",
+                        "title":  "NLP extraction quality fixes (noise filter + symptom extraction + service regex)",
+                        "tags":  [
+                                     "backend",
+                                     "nlp"
+                                 ],
+                        "owner_agent":  "backend_builder",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "validateNode: NOISE_TERMS check applies only when !name.includes('-') && !name.includes(' ').",
+                                                    "extractServiceFromMeta: regex matches only hyphenated (payment-api) or camelCase (PaymentAPI) candidates. Rejects bare words.",
+                                                    "ruleExtractGraph: break removed from SYMPTOM_PATTERNS loop — multiple symptoms per section extracted.",
+                                                    "All 83 existing NLP tests still pass. New tests added for all three fixes."
+                                                ],
+                        "tests_required":  [
+                                               "validateNode({ name: 'api', node_type: 'service' }) → null (noise)",
+                                               "validateNode({ name: 'payment-api', node_type: 'service' }) → not null (hyphenated)",
+                                               "extractServiceFromMeta('Production Database Outage') → null",
+                                               "extractServiceFromMeta('payment-api timeout incident') → 'payment-api'",
+                                               "ruleExtractGraph extracts 2 symptoms from section containing 2 symptom patterns"
+                                           ],
+                        "dependencies":  [
+                                             "S5-ARCH-001"
+                                         ],
+                        "notes":  [
+                                      "Covers NLP-2 and NLP-3 (noise + service regex) and ML-7 (one symptom per section cap). See docs/MVP_PRODUCTION_PLAN.md NLP-2, NLP-3, ML-7."
+                                  ]
+                    },
+                    {
+                        "id":  "W5-008-QA",
+                        "title":  "QA Review: NLP extraction quality",
+                        "tags":  [
+                                     "review",
+                                     "nlp"
+                                 ],
+                        "owner_agent":  "qa_security",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/packages/nlp/src/graphExtract.js",
+                                      "incident-ingest/packages/nlp/src/tests/**"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "ruleExtractGraph on fixture section with 3 symptom phrases → all 3 extracted.",
+                                                    "'api' alone blocked but 'api-gateway' passes.",
+                                                    "extractServiceFromMeta does not add environment/cloud terms to graph.",
+                                                    "All 83+ NLP unit tests pass."
+                                                ],
+                        "tests_required":  [
+
+                                           ],
+                        "dependencies":  [
+                                             "W5-008"
+                                         ],
+                        "notes":  [
+
+                                  ]
+                    },
+                    {
+                        "id":  "Sprint5-Release",
+                        "title":  "Sprint 5 release, smoke tests, and doc sync",
+                        "tags":  [
+                                     "release",
+                                     "docs",
+                                     "deploy"
+                                 ],
+                        "owner_agent":  "release_integrator",
+                        "status":  "TODO",
+                        "scope":  [
+                                      "incident-ingest/README.md",
+                                      "incident-ingest/docs/RUNBOOK.md",
+                                      "incident-ingest/docs/API_SPEC.md",
+                                      "incident-ingest/docs/DEMO_SCRIPT.md",
+                                      "incident-ingest/docs/SPRINT_5_PLAN.md",
+                                      "incident-ingest/docker-compose.yaml",
+                                      "incident-ingest/docs/antigravity/TASK_BOARD.json"
+                                  ],
+                        "acceptance_criteria":  [
+                                                    "docker compose up -d --wait starts db + redis + minio + api + worker, all healthy.",
+                                                    "Upload a .txt postmortem → worker processes → incident created with real semantic embedding.",
+                                                    "GET /search?q=<keyword> returns ranked results using real embeddings.",
+                                                    "Duplicate upload returns 409. PDF upload returns 400.",
+                                                    "NODE_ENV=production without ADMIN_TOKEN → API refuses to start.",
+                                                    "API logs are JSON (verified with | jq .).",
+                                                    "CI pipeline green on feat/sprint5 branch.",
+                                                    "README, RUNBOOK, DEMO_SCRIPT updated for Sprint 5 stack.",
+                                                    "TASK_BOARD statuses updated from actual QA outcomes."
+                                                ],
+                        "tests_required":  [
+                                               "end-to-end Sprint 5 smoke test execution"
+                                           ],
+                        "dependencies":  [
+                                             "W5-001-QA",
+                                             "W5-002-QA",
+                                             "W5-003-QA",
+                                             "W5-004-QA",
+                                             "W5-005-QA",
+                                             "W5-006-QA",
+                                             "W5-007-QA",
+                                             "W5-008-QA"
+                                         ],
+                        "notes":  [
+                                      "Do not mark Sprint 5 complete until full docker compose stack runs, real embeddings verified, and CI is green."
+                                  ]
+                    }
+                ]
+}

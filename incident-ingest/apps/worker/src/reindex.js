@@ -10,24 +10,32 @@
  *   node apps/worker/src/reindex.js [--batch 50] [--dry-run]
  *
  * Options:
- *   --batch N    How many incidents to process per page (default: 50)
- *   --dry-run    Log what would be indexed but don't write anything
+ *   --batch N         How many incidents to process per page (default: 50)
+ *   --dry-run         Log what would be indexed but don't write anything
  *   --incidents-only  Skip section embeddings
+ *   --chunks          Also (re)build retrieval chunks for ALL incidents using
+ *                     the configured EMBEDDING_PROVIDER, incl. TurboQuant codes
+ *                     when TURBOQUANT_ENABLED=true. Use after switching
+ *                     embedding models or TurboQuant settings.
+ *   --chunks-only     Only rebuild chunks (skip legacy incident/section embeddings)
  *
  * Safe to interrupt and resume — already-indexed records (embedding IS NOT NULL)
- * are skipped automatically.
+ * are skipped automatically. Chunk rebuild is idempotent (delete + insert per
+ * incident).
  *
  * Exit codes:
  *   0  Success (all records indexed or nothing to do)
  *   1  Fatal error (DB unreachable, bad env, etc.)
  */
 
+import { logger } from "./lib/logger.js";
 import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import {
   createEmbedding,
   formatEmbeddingForSql,
 } from "@pkg/nlp";
+import { indexIncidentChunks } from "./chunks.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +44,8 @@ const batchArg = args.indexOf("--batch");
 const BATCH_SIZE = batchArg !== -1 ? Number(args[batchArg + 1]) || 50 : 50;
 const DRY_RUN = args.includes("--dry-run");
 const INCIDENTS_ONLY = args.includes("--incidents-only");
+const CHUNKS_ONLY = args.includes("--chunks-only");
+const REBUILD_CHUNKS = args.includes("--chunks") || CHUNKS_ONLY;
 
 // ── DB ────────────────────────────────────────────────────────────────────────
 
@@ -81,7 +91,7 @@ async function indexIncident(incident) {
 
   if (incidentVector) {
     if (DRY_RUN) {
-      console.log(`  [dry-run] would write incident embedding for ${incident.id}`);
+      logger.info(`  [dry-run] would write incident embedding for ${incident.id}`);
     } else {
       await prisma.$executeRawUnsafe(
         'UPDATE "incidents" SET "summary_embedding" = $1::vector WHERE "id" = $2::uuid',
@@ -91,7 +101,7 @@ async function indexIncident(incident) {
     }
     incidentIndexed = 1;
   } else {
-    console.warn(`  [skip] no embedding generated for incident ${incident.id} (empty text?)`);
+    logger.warn(`  [skip] no embedding generated for incident ${incident.id} (empty text?)`);
     skipped = 1;
   }
 
@@ -102,13 +112,13 @@ async function indexIncident(incident) {
         createEmbedding(buildSectionEmbeddingText(section))
       );
       if (!sectionVector) {
-        console.warn(`  [skip] no embedding for section ${section.id}`);
+        logger.warn(`  [skip] no embedding for section ${section.id}`);
         skipped++;
         continue;
       }
 
       if (DRY_RUN) {
-        console.log(`  [dry-run] would write section embedding for ${section.id}`);
+        logger.info(`  [dry-run] would write section embedding for ${section.id}`);
       } else {
         await prisma.$executeRawUnsafe(
           'UPDATE "sections" SET "embedding" = $1::vector WHERE "id" = $2::uuid',
@@ -125,20 +135,65 @@ async function indexIncident(incident) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Rebuild retrieval chunks (and TurboQuant codes) for every incident.
+ * Uses the configured EMBEDDING_PROVIDER / TURBOQUANT_* environment.
+ */
+async function rebuildAllChunks() {
+  let cursor = null;
+  let incidents = 0;
+  let chunksWritten = 0;
+
+  while (true) {
+    const batch = await prisma.incident.findMany({
+      where: cursor ? { id: { gt: cursor } } : {},
+      include: { sections: { orderBy: { createdAt: "asc" } } },
+      orderBy: { id: "asc" },
+      take: BATCH_SIZE,
+    });
+    if (batch.length === 0) break;
+
+    for (const incident of batch) {
+      cursor = incident.id;
+      try {
+        if (DRY_RUN) {
+          logger.info(`  [dry-run] would rebuild chunks for incident ${incident.id}`);
+        } else {
+          chunksWritten += await indexIncidentChunks(prisma, incident);
+        }
+        incidents += 1;
+      } catch (err) {
+        logger.error(`[reindex] chunk rebuild failed for ${incident.id}:`, err?.message ?? err);
+      }
+    }
+  }
+
+  logger.info(`[reindex] Chunks rebuilt: incidents=${incidents}, chunks=${chunksWritten}`);
+}
+
 async function main() {
-  console.log(
-    `[reindex] Starting backfill — batch=${BATCH_SIZE}, dry-run=${DRY_RUN}, incidents-only=${INCIDENTS_ONLY}`
+  logger.info(
+    `[reindex] Starting backfill — batch=${BATCH_SIZE}, dry-run=${DRY_RUN}, ` +
+      `incidents-only=${INCIDENTS_ONLY}, chunks=${REBUILD_CHUNKS}, chunks-only=${CHUNKS_ONLY}`
   );
+
+  if (REBUILD_CHUNKS) {
+    await rebuildAllChunks();
+    if (CHUNKS_ONLY) {
+      await prisma.$disconnect();
+      process.exit(0);
+    }
+  }
 
   // Count unindexed incidents
   const totalUnindexed = await prisma.$queryRaw`
     SELECT count(*)::int AS n FROM incidents WHERE "summary_embedding" IS NULL
   `;
   const total = Number(totalUnindexed[0].n);
-  console.log(`[reindex] Found ${total} incident(s) with no summary_embedding`);
+  logger.info(`[reindex] Found ${total} incident(s) with no summary_embedding`);
 
   if (total === 0) {
-    console.log("[reindex] Nothing to do — all incidents already indexed.");
+    logger.info("[reindex] Nothing to do — all incidents already indexed.");
     await prisma.$disconnect();
     process.exit(0);
   }
@@ -163,7 +218,7 @@ async function main() {
 
     if (batch.length === 0) break;
 
-    console.log(
+    logger.info(
       `[reindex] Processing batch of ${batch.length} incidents (${processed} done so far)...`
     );
 
@@ -176,7 +231,7 @@ async function main() {
         processed++;
         cursor = incident.id;
       } catch (err) {
-        console.error(
+        logger.error(
           `[reindex] Error indexing incident ${incident.id}:`,
           err?.message ?? err
         );
@@ -187,7 +242,7 @@ async function main() {
     }
   }
 
-  console.log(
+  logger.info(
     `[reindex] Done. incidents=${totalIncidentIndexed}, sections=${totalSectionsIndexed}, skipped=${totalSkipped}`
   );
 
@@ -196,7 +251,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[reindex] Fatal:", err?.message ?? err);
+  logger.error("[reindex] Fatal:", err?.message ?? err);
   prisma.$disconnect().catch(() => {});
   process.exit(1);
 });

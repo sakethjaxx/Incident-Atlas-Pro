@@ -24,12 +24,14 @@
  * @module processor
  */
 
+import { logger } from "./lib/logger.js";
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { parseSections, summarize } from "@pkg/nlp";
-import { safeIndexIncidentEmbeddings } from "./retrieval.js";
+import { safeIndexIncidentEmbeddings, safeIndexIncidentGraph, readFromStorage } from "@pkg/db";
+import { safeIndexIncidentChunks } from "./chunks.js";
 
 // ── DB client ─────────────────────────────────────────────────────────────────
 
@@ -80,7 +82,12 @@ export async function resolveRawText(doc) {
 
   // txt, md, or unknown — attempt utf-8 read
   try {
-    const content = await readFile(doc.rawPath, "utf-8");
+    let content;
+    if (doc.rawPath.startsWith("uploads/")) {
+      content = await readFromStorage(doc.rawPath);
+    } else {
+      content = await readFile(doc.rawPath, "utf-8");
+    }
     if (!content.trim()) {
       throw new PermanentError("File at rawPath is empty");
     }
@@ -108,6 +115,7 @@ export async function resolveRawText(doc) {
  */
 export async function processParseJob(job) {
   const { documentId } = job.data;
+  const metadata = job.data?.metadata ?? {};
 
   if (!documentId) {
     // Bad job data — don't retry
@@ -169,15 +177,24 @@ export async function processParseJob(job) {
       data: {
         documentId: doc.id,
         title: `Incident from doc ${doc.id.slice(0, 8)}`,
+        company: typeof metadata.company === "string" ? metadata.company.trim() : null,
         summaryText,
         sections: { create: sections },
       },
       include: { sections: true },
     });
 
-    await safeIndexIncidentEmbeddings(prisma, incident);
+    // ── Stage 4 (Sprint 3): index embeddings + extract graph in parallel ──
+    // Both are I/O-bound and independent — run concurrently.
+    // Neither blocks nor rolls back ingest on failure (safe wrappers).
+    await job.updateProgress(85);
+    await Promise.all([
+      safeIndexIncidentEmbeddings(prisma, incident),
+      safeIndexIncidentGraph(prisma, incident),
+      safeIndexIncidentChunks(prisma, incident),
+    ]);
 
-    // ── Stage 4: mark done ──────────────────────────────────────────────
+    // ── Stage 5: mark done ──────────────────────────────────────────────
     await prisma.document.update({
       where: { id: documentId },
       data: { parseStatus: "done" },
@@ -221,7 +238,7 @@ async function safeUpdateJob(documentId, data) {
   try {
     await prisma.ingestJob.updateMany({ where: { documentId }, data });
   } catch (e) {
-    console.warn(
+    logger.warn(
       `[processor] safeUpdateJob failed for documentId=${documentId}:`,
       e?.message ?? e
     );

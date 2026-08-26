@@ -9,6 +9,7 @@
  *      CLOSE_TIMEOUT_MS.
  */
 
+import { logger } from "./lib/logger.js";
 import "dotenv/config";
 import { Worker } from "bullmq";
 import { processParseJob, prisma } from "./processor.js";
@@ -23,7 +24,7 @@ const concurrency = Number.isFinite(_rawConcurrency) && _rawConcurrency >= 1
   ? Math.floor(_rawConcurrency)
   : 2;
 if (!Number.isFinite(_rawConcurrency) || _rawConcurrency < 1) {
-  console.warn(
+  logger.warn(
     `[worker] WORKER_CONCURRENCY="${process.env.WORKER_CONCURRENCY}" is invalid — defaulting to 2`
   );
 }
@@ -44,7 +45,7 @@ function parseRedisUrl(url) {
     enableReadyCheck: false,
     retryStrategy(times) {
       if (times > REDIS_MAX_RETRIES) {
-        console.error(
+        logger.error(
           `[worker] Redis unreachable after ${REDIS_MAX_RETRIES} retries — shutting down`
         );
         // Call shutdown asynchronously so ioredis can return first
@@ -69,34 +70,34 @@ const worker = new Worker(QUEUE_NAME, processParseJob, {
 // ── Lifecycle events ──────────────────────────────────────────────────────────
 
 worker.on("ready", () => {
-  console.log(
+  logger.info(
     `[worker] ✓ Listening on queue "${QUEUE_NAME}" (concurrency=${concurrency}, redis=${redisUrl})`
   );
   startHeartbeat();
 });
 
 worker.on("active", (job) => {
-  console.log(`[worker] → Processing job ${job.id} | documentId=${job.data.documentId}`);
+  logger.info(`[worker] → Processing job ${job.id} | documentId=${job.data.documentId}`);
 });
 
 worker.on("completed", (job, result) => {
   if (result?.error) {
-    console.warn(`[worker] ✗ Job ${job.id} completed with data error: ${result.error}`);
+    logger.warn(`[worker] ✗ Job ${job.id} completed with data error: ${result.error}`);
   } else {
-    console.log(`[worker] ✓ Job ${job.id} done | incidentId=${result?.incidentId}`);
+    logger.info(`[worker] ✓ Job ${job.id} done | incidentId=${result?.incidentId}`);
   }
 });
 
 worker.on("failed", (job, err) => {
   const attemptsLeft = (job?.opts?.attempts ?? 1) - (job?.attemptsMade ?? 1);
-  console.error(
+  logger.error(
     `[worker] ✗ Job ${job?.id} failed (${attemptsLeft} retries left): ${err.message}`
   );
 });
 
 worker.on("error", (err) => {
   // Redis connection errors — BullMQ will auto-reconnect
-  console.error("[worker] Redis error:", err.message);
+  logger.error("[worker] Redis error:", err.message);
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
@@ -106,14 +107,14 @@ let shuttingDown = false;
 async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
-  console.log(`[worker] ${signal} received — draining in-flight jobs (max ${CLOSE_TIMEOUT_MS / 1000}s)...`);
+  logger.info(`[worker] ${signal} received — draining in-flight jobs (max ${CLOSE_TIMEOUT_MS / 1000}s)...`);
 
   // W4-H1: Use a flag so the timeout callback knows drain already completed
   // before it fires, preventing a race between clearTimeout and the callback.
   let drainCompleted = false;
   const timer = setTimeout(() => {
     if (drainCompleted) return; // drain beat the timeout — don't clobber exit
-    console.error("[worker] Drain timeout exceeded — forcing exit");
+    logger.error("[worker] Drain timeout exceeded — forcing exit");
     process.exit(1);
   }, CLOSE_TIMEOUT_MS);
   timer.unref();
@@ -125,16 +126,16 @@ async function shutdown(signal) {
     await worker.close(false);
     drainCompleted = true;
     clearTimeout(timer);
-    console.log("[worker] Clean shutdown complete.");
+    logger.info("[worker] Clean shutdown complete.");
   } catch (err) {
     drainCompleted = true;
     clearTimeout(timer);
-    console.error("[worker] Error during shutdown:", err.message);
+    logger.error("[worker] Error during shutdown:", err.message);
     exitCode = 1;
   } finally {
     stopHeartbeat();
     await prisma.$disconnect().catch((e) =>
-      console.error("[worker] Prisma disconnect error:", e.message)
+      logger.error("[worker] Prisma disconnect error:", e.message)
     );
     process.exit(exitCode);
   }
@@ -146,10 +147,10 @@ process.on("SIGINT", () => shutdown("SIGINT"));
 // W4-QA-H1: Catch unhandled rejections / exceptions so the process can drain
 // jobs and disconnect Prisma rather than crashing immediately.
 process.on("unhandledRejection", (reason) => {
-  console.error("[worker] Unhandled rejection:", reason);
+  logger.error("[worker] Unhandled rejection:", reason);
   shutdown("unhandledRejection");
 });
 process.on("uncaughtException", (err) => {
-  console.error("[worker] Uncaught exception:", err);
+  logger.error("[worker] Uncaught exception:", err);
   shutdown("uncaughtException");
 });

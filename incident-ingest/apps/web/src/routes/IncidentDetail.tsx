@@ -1,39 +1,54 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   getIncident,
   getSimilarIncidents,
+  getGraphPatterns,
+  getGraphNeighbors,
   type IncidentDetail as IncidentDetailType,
   type SimilarIncidentResult,
 } from "../lib/api";
+import Icon, { type IconName } from "../components/Icon";
+
+const NODE_TYPE_COLOR: Record<string, string> = {
+  service: "var(--brand)",
+  symptom: "var(--danger)",
+  root_cause: "var(--warning)",
+  fix: "var(--success)",
+};
+
+function nodeColor(type: string) {
+  return NODE_TYPE_COLOR[type] ?? "var(--text-muted)";
+}
 
 const SECTION_ORDER = ["impact", "timeline", "rootcause", "fix"] as const;
 
 const SECTION_META: Record<
   string,
-  { label: string; icon: string; cls: string; color: string }
+  { label: string; icon: IconName; cls: string; color: string }
 > = {
   impact: {
     label: "Impact",
-    icon: "IM",
+    icon: "pulse",
     cls: "impact",
     color: "var(--danger)",
   },
   timeline: {
     label: "Timeline",
-    icon: "TL",
+    icon: "clock",
     cls: "timeline",
     color: "var(--info)",
   },
   rootcause: {
     label: "Root Cause",
-    icon: "RC",
+    icon: "search",
     cls: "rootcause",
     color: "var(--warning)",
   },
   fix: {
     label: "Mitigation / Fix",
-    icon: "FX",
+    icon: "wrench",
     cls: "fix",
     color: "var(--success)",
   },
@@ -62,7 +77,7 @@ function sortSections(sections: IncidentDetailType["sections"]) {
 function SectionPanel({ section }: { section: IncidentDetailType["sections"][0] }) {
   const meta = SECTION_META[section.type] ?? {
     label: section.type,
-    icon: "TX",
+    icon: "fileText" as IconName,
     cls: "impact",
     color: "var(--text-secondary)",
   };
@@ -70,7 +85,9 @@ function SectionPanel({ section }: { section: IncidentDetailType["sections"][0] 
   return (
     <div className="section-panel" id={`section-${section.type}-${section.id}`}>
       <div className="section-header">
-        <div className={`section-type-icon ${meta.cls}`}>{meta.icon}</div>
+        <div className={`section-type-icon ${meta.cls}`}>
+          <Icon name={meta.icon} size={15} />
+        </div>
         <div>
           <div className="section-type-label" style={{ color: meta.color }}>
             {meta.label}
@@ -108,10 +125,8 @@ function SimilarIncidentCard({ item }: { item: SimilarIncidentResult }) {
           <span
             className="badge"
             style={{
-              borderColor:
-                SECTION_META[item.matchedSections[0].type]?.color ?? "var(--border)",
-              color:
-                SECTION_META[item.matchedSections[0].type]?.color ?? "var(--text-secondary)",
+              borderColor: SECTION_META[item.matchedSections[0].type]?.color ?? "var(--border)",
+              color: SECTION_META[item.matchedSections[0].type]?.color ?? "var(--text-secondary)",
             }}
           >
             {item.matchedSections[0].type}
@@ -123,17 +138,126 @@ function SimilarIncidentCard({ item }: { item: SimilarIncidentResult }) {
   );
 }
 
+function IncidentGraphPanel({ incident }: { incident: IncidentDetailType }) {
+  const company = incident.company;
+
+  const sectionMap = useMemo(
+    () => new Map(incident.sections.map((section) => [section.id, section])),
+    [incident.sections]
+  );
+
+  const { data: patternsData, isLoading: patternsLoading } = useQuery({
+    queryKey: ["graph", "patterns", "detail", company],
+    queryFn: () => getGraphPatterns({ service: company! }),
+    enabled: Boolean(company),
+    retry: false,
+  });
+
+  const anchorNode = patternsData?.patterns?.[0]?.nodes?.[0] ?? null;
+
+  const { data: neighborsData, isLoading: neighborsLoading } = useQuery({
+    queryKey: ["graph", "neighbors", anchorNode?.id],
+    queryFn: () => getGraphNeighbors(anchorNode!.id, 1),
+    enabled: Boolean(anchorNode),
+    retry: false,
+  });
+
+  const isLoading = patternsLoading || neighborsLoading;
+  const edges = neighborsData?.edges ?? [];
+  const nodes = neighborsData?.nodes ?? [];
+
+  return (
+    <div className="card card-padded" id="graph-panel">
+      <div className="panel-heading">
+        <h2>Patterns</h2>
+        <Link
+          to={company ? `/graph?service=${encodeURIComponent(company)}` : "/graph"}
+          style={{ fontSize: "0.75rem", color: "var(--brand)", display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          View patterns
+          <Icon name="arrowRight" size={14} />
+        </Link>
+      </div>
+
+      {isLoading && <div className="skeleton" style={{ height: 80, borderRadius: 10 }} />}
+
+      {!isLoading && edges.length === 0 && (
+        <div className="empty-state" style={{ padding: "16px 0" }}>
+          <div className="empty-state-icon">
+            <Icon name="graph" size={26} />
+          </div>
+          <p style={{ fontSize: "0.8125rem" }}>
+            No pattern data yet. Patterns are extracted as incidents are processed.
+          </p>
+        </div>
+      )}
+
+      {edges.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+          {edges.map((edge) => {
+            const fromNode = nodes.find((node) => node.id === edge.from);
+            const toNode = nodes.find((node) => node.id === edge.to);
+            const section = sectionMap.get(edge.evidence_section_id);
+            return (
+              <div
+                key={edge.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "7px 0",
+                  borderBottom: "1px solid var(--border)",
+                  fontSize: "0.8125rem",
+                  flexWrap: "wrap",
+                }}
+              >
+                {fromNode && (
+                  <span style={{ color: nodeColor(fromNode.type), fontWeight: 500 }}>
+                    {fromNode.name}
+                  </span>
+                )}
+                <span style={{ color: "var(--text-muted)", fontSize: "0.6875rem" }}>
+                  {edge.type}
+                </span>
+                {toNode && (
+                  <span style={{ color: nodeColor(toNode.type), fontWeight: 500 }}>
+                    {toNode.name}
+                  </span>
+                )}
+                {section && (
+                  <a
+                    href={`#section-${section.type}-${section.id}`}
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: "0.6875rem",
+                      color: "var(--brand)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                    title={`Evidence: ${section.type}`}
+                  >
+                    {section.type}
+                    <Icon name="arrowUp" size={12} />
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function IncidentDetail() {
   const { id } = useParams<{ id: string }>();
 
-  const {
-    data,
-    isLoading,
-    error,
-  } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["incident", id],
     queryFn: () => getIncident(id!),
     enabled: Boolean(id),
+    retry: false,
   });
 
   const {
@@ -173,7 +297,7 @@ export default function IncidentDetail() {
     return (
       <div className="card card-padded fade-in">
         <div className="alert alert-error" style={{ marginBottom: 16 }}>
-          <span>!</span>
+          <Icon name="alert" size={18} />
           <div>
             <strong>Incident not found.</strong> {error.message}
           </div>
@@ -199,6 +323,7 @@ export default function IncidentDetail() {
           id="back-to-incidents"
           style={{ fontSize: "0.8125rem", padding: "6px 14px" }}
         >
+          <Icon name="arrowRight" size={14} style={{ transform: "rotate(180deg)" }} />
           Back to incidents
         </Link>
       </div>
@@ -223,17 +348,7 @@ export default function IncidentDetail() {
             </div>
 
             {data.summaryText && (
-              <div
-                style={{
-                  padding: "16px 28px",
-                  borderBottom: "1px solid var(--border)",
-                  fontSize: "0.9375rem",
-                  color: "var(--text-secondary)",
-                  lineHeight: 1.7,
-                  background: "rgba(8,11,18,0.3)",
-                }}
-                id="incident-summary"
-              >
+              <div className="detail-summary" id="incident-summary">
                 <div
                   style={{
                     fontSize: "0.6875rem",
@@ -249,16 +364,7 @@ export default function IncidentDetail() {
               </div>
             )}
 
-            <div
-              style={{
-                padding: "12px 28px",
-                display: "flex",
-                gap: 14,
-                flexWrap: "wrap",
-                fontSize: "0.75rem",
-                color: "var(--text-muted)",
-              }}
-            >
+            <div className="detail-footer">
               <span>
                 <code className="inline-code">{data.id}</code>
               </span>
@@ -271,7 +377,9 @@ export default function IncidentDetail() {
           {sections.length === 0 ? (
             <div className="card">
               <div className="empty-state" style={{ padding: "36px 0" }}>
-                <div className="empty-state-icon">TX</div>
+                <div className="empty-state-icon">
+                  <Icon name="fileText" size={28} />
+                </div>
                 <h3>No sections extracted</h3>
                 <p>This incident does not have structured section content yet.</p>
               </div>
@@ -287,7 +395,9 @@ export default function IncidentDetail() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div className="card card-padded" id="similar-panel">
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 10 }}>Similar Incidents</h2>
+            <div className="panel-heading">
+              <h2>Similar Incidents</h2>
+            </div>
 
             {similarLoading && (
               <div className="similar-list">
@@ -299,14 +409,16 @@ export default function IncidentDetail() {
 
             {similarError instanceof Error && (
               <div className="alert alert-error">
-                <span>!</span>
+                <Icon name="alert" size={18} />
                 <div>{similarError.message}</div>
               </div>
             )}
 
             {!similarLoading && !(similarError instanceof Error) && similar.length === 0 && (
               <div className="empty-state" style={{ padding: "24px 0" }}>
-                <div className="empty-state-icon">~</div>
+                <div className="empty-state-icon">
+                  <Icon name="spark" size={28} />
+                </div>
                 <h3>No close matches yet</h3>
                 <p>Add more incidents to widen retrieval coverage.</p>
               </div>
@@ -323,11 +435,13 @@ export default function IncidentDetail() {
 
           {sections.length > 0 && (
             <div className="card card-padded" id="section-index">
-              <h2 style={{ fontSize: "0.9375rem", marginBottom: 10 }}>Section Index</h2>
+              <div className="panel-heading">
+                <h2>Section Index</h2>
+              </div>
               {sections.map((section) => {
                 const meta = SECTION_META[section.type] ?? {
                   label: section.type,
-                  icon: "TX",
+                  icon: "fileText" as IconName,
                 };
 
                 return (
@@ -345,7 +459,7 @@ export default function IncidentDetail() {
                       textDecoration: "none",
                     }}
                   >
-                    <span>{meta.icon}</span>
+                    <Icon name={meta.icon} size={14} />
                     <span>{meta.label}</span>
                     <span
                       style={{
@@ -362,10 +476,7 @@ export default function IncidentDetail() {
             </div>
           )}
 
-          <div className="card card-padded" style={{ opacity: 0.6 }}>
-            <h2 style={{ fontSize: "0.9375rem", marginBottom: 6 }}>Knowledge Graph</h2>
-            <p style={{ fontSize: "0.8125rem" }}>Graph exploration lands in Sprint 3.</p>
-          </div>
+          <IncidentGraphPanel incident={data} />
         </div>
       </div>
     </div>

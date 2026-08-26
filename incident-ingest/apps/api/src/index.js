@@ -1,3 +1,4 @@
+import { logger } from "./lib/logger.js";
 import express from "express";
 import cors from "cors";
 import { PrismaClient } from "@prisma/client";
@@ -22,7 +23,7 @@ const INGEST_API_KEY = process.env.INGEST_API_KEY || "";
 function requireIngestKey(req, res, next) {
   if (!INGEST_API_KEY) {
     // Key not configured → warn once on first request but allow through (dev only).
-    console.warn(
+    logger.warn(
       "[SECURITY] INGEST_API_KEY is not set. Ingest endpoint is unprotected."
     );
     return next();
@@ -219,13 +220,13 @@ app.post("/ingest/manual", requireIngestKey, async (req, res, next) => {
 });
 
 app.use((error, _req, res, _next) => {
-  console.error(error);
+  logger.error(error);
   res.status(500).json({ error: "Internal server error" });
 });
 
 const port = Number(process.env.PORT) || 3001;
 app.listen(port, () => {
-  console.log(`API listening on http://localhost:${port}`);
+  logger.info(`API listening on http://localhost:${port}`);
 });
 
 process.on("SIGINT", async () => {

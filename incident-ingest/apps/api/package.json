@@ -15,13 +15,16 @@
     "prisma:migrate:prod": "prisma migrate deploy"
   },
   "dependencies": {
+    "@pkg/db": "workspace:*",
     "@pkg/nlp": "workspace:*",
     "@prisma/client": "^5.18.0",
     "bullmq": "^5.7.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.3.2",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.0.0",

@@ -11,6 +11,8 @@
     "api:generate": "pnpm --filter @app/api prisma:generate",
     "worker:dev": "pnpm --filter @app/worker dev",
     "worker:start": "pnpm --filter @app/worker start",
+    "reindex:chunks": "pnpm --filter @app/worker reindex:chunks",
+    "bench": "node scripts/benchmark.mjs",
     "test": "pnpm -r --stream test",
     "test:unit": "pnpm --filter @pkg/nlp test:unit && pnpm --filter @app/api test:unit && pnpm --filter @app/worker test:unit"
   }

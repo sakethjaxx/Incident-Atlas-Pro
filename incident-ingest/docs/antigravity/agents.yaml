@@ -1,0 +1,51 @@
+agents:
+- name: orchestrator_router
+  model: Gemini 3 Flash
+  role: Plan tickets, route work, manage dependencies
+  routing_tags:
+  - plan
+  - route
+- name: research_sot
+  model: Gemini 3.1 Pro (Low)
+  role: Research best/current approach with links (Gemini + browsing)
+  routing_tags:
+  - research
+- name: architect
+  model: Gemini 3.1 Pro (Low)
+  role: Design schemas, contracts, pipelines
+  routing_tags:
+  - design
+- name: backend_builder
+  model: Claude Sonnet 4.6 (Thinking)
+  role: Implement backend + workers + DB + tests
+  routing_tags:
+  - backend
+  - worker
+  - db
+- name: frontend_builder
+  model: Claude Sonnet 4.6 (Thinking)
+  role: Implement Next.js UI + integration + tests
+  routing_tags:
+  - frontend
+  - ui
+- name: qa_security
+  model: Claude Sonnet 4.6 (Thinking)
+  role: Adversarial review, security, perf, test gaps
+  routing_tags:
+  - review
+  - security
+- name: release_integrator
+  model: Gemini 3 Flash
+  role: Merge/release plan, deploy, smoke tests, demo, and doc sync
+  routing_tags:
+  - release
+  - deploy
+  - docs
+
+routing:
+  research: research_sot
+  design: architect
+  backend: backend_builder
+  frontend: frontend_builder
+  review: qa_security
+  release: release_integrator

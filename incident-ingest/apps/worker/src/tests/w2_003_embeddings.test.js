@@ -165,7 +165,7 @@ describe("safeIndexIncidentEmbeddings (worker)", () => {
 
   it("gracefully skips and returns false when DB throws", async () => {
     const { safeIndexIncidentEmbeddings } = await import(
-      "../retrieval.js"
+      "@pkg/db"
     );
 
     mockClient.$executeRawUnsafe.mockRejectedValue(
@@ -191,7 +191,7 @@ describe("safeIndexIncidentEmbeddings (worker)", () => {
 
   it("does not write embedding when incident text produces null vector (empty title/text)", async () => {
     const { safeIndexIncidentEmbeddings } = await import(
-      "../retrieval.js"
+      "@pkg/db"
     );
 
     // All fields are empty/stopwords → createEmbedding returns null

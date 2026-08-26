@@ -4,8 +4,8 @@
  * Two concerns are tested separately:
  *
  *   1. API layer tests (no Redis needed): verify that POST /ingest/upload
- *      correctly creates a Document row with rawText populated, creates an
- *      IngestJob, and attempts to enqueue (Redis failure is caught gracefully).
+ *      correctly creates Document rows with rawText populated, creates
+ *      IngestJobs, and enqueues through a fake queue.
  *
  *   2. Worker pipeline tests (no Redis needed): call processParseJob() directly
  *      with a real Prisma DB, bypassing BullMQ entirely.  This proves the full
@@ -23,6 +23,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import request from "supertest";
 import { buildApp } from "../app.js";
 import { prisma } from "../lib/prisma.js";
+import { setParseQueueForTest } from "../routes/ingest.js";
 import { processParseJob } from "../../../worker/src/processor.js";
 
 const app = buildApp();
@@ -35,17 +36,23 @@ beforeAll(async () => {
   await mkdir(uploadDir, { recursive: true });
   // Override UPLOAD_DIR so multer saves to our temp dir
   process.env.UPLOAD_DIR = uploadDir;
+  setParseQueueForTest({
+    add: async (_name, _data, opts) => ({ id: opts.jobId }),
+  });
 });
 
 beforeEach(async () => {
-  // Wipe in dependency order
+  // Wipe in dependency order (Sprint 3: graph_edges before sections due to RESTRICT FK)
+  await prisma.$executeRaw`DELETE FROM "graph_edges"`;
   await prisma.section.deleteMany();
   await prisma.incident.deleteMany();
   await prisma.ingestJob.deleteMany();
   await prisma.document.deleteMany();
 });
 
+
 afterAll(async () => {
+  setParseQueueForTest(null);
   await rm(uploadDir, { recursive: true, force: true });
   await prisma.$disconnect();
 });
@@ -90,26 +97,71 @@ describe("POST /ingest/upload — API layer", () => {
     expect(res.status).toBe(401);
   });
 
-  it("accepts a txt file and stores rawText in the document row", async () => {
-    // We bypass the queue by using POST /documents/upload (JSON path) which
-    // also stores rawText without needing Redis.
+  it("rejects uploaded files without company scope", async () => {
     const res = await request(app)
-      .post("/documents/upload")
+      .post("/ingest/upload")
       .set(AUTH)
-      .send({ rawText: SAMPLE_TXT });
+      .attach("file", Buffer.from(SAMPLE_TXT), "incident.txt");
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/company/i);
+  });
 
-    expect(res.status).toBe(201);
-    expect(res.body.rawText).toBe(SAMPLE_TXT);
-    expect(res.body.parseStatus).toBe("pending");
-    expect(res.body.ingestJob).toBeDefined();
-    expect(res.body.ingestJob.status).toBe("queued");
+  it("accepts a single txt file and stores rawText in the document row", async () => {
+    const res = await request(app)
+      .post("/ingest/upload")
+      .set(AUTH)
+      .field("company", "Acme")
+      .attach("file", Buffer.from(SAMPLE_TXT), "incident.txt");
 
-    // Verify the hash is stored
+    expect(res.status).toBe(202);
+    expect(res.body.accepted).toBe(1);
+    expect(res.body.uploads).toHaveLength(1);
+    expect(res.body.jobId).toBe(res.body.uploads[0].jobId);
+    expect(res.body.documentId).toBe(res.body.uploads[0].documentId);
+
+    const doc = await prisma.document.findUnique({
+      where: { id: res.body.documentId },
+      include: { ingestJob: true },
+    });
+    expect(doc.rawText).toBe(SAMPLE_TXT);
+    expect(doc.parseStatus).toBe("pending");
+    expect(doc.ingestJob.status).toBe("queued");
+
     const expectedHash = crypto
       .createHash("sha256")
       .update(SAMPLE_TXT)
       .digest("hex");
-    expect(res.body.hash).toBe(expectedHash);
+    expect(doc.hash).toBe(expectedHash);
+  });
+
+  it("accepts a batch of txt/md files and creates one job per file", async () => {
+    const secondText = `${SAMPLE_TXT}\n\nTimeline\n10:00 detected.`;
+
+    const res = await request(app)
+      .post("/ingest/upload")
+      .set(AUTH)
+      .field("company", "Acme")
+      .attach("files", Buffer.from(SAMPLE_TXT), "incident-a.txt")
+      .attach("files", Buffer.from(secondText), "incident-b.md");
+
+    expect(res.status).toBe(202);
+    expect(res.body.accepted).toBe(2);
+    expect(res.body.uploads).toHaveLength(2);
+    expect(res.body.uploads.map((item) => item.fileName)).toEqual([
+      "incident-a.txt",
+      "incident-b.md",
+    ]);
+
+    const documents = await prisma.document.findMany({
+      include: { ingestJob: true },
+      orderBy: { fetchedAt: "asc" },
+    });
+    expect(documents).toHaveLength(2);
+    expect(documents.map((doc) => doc.rawText)).toEqual([
+      SAMPLE_TXT,
+      secondText,
+    ]);
+    expect(documents.every((doc) => doc.ingestJob.status === "queued")).toBe(true);
   });
 });
 
