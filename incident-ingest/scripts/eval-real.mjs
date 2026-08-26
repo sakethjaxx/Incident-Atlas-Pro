@@ -195,6 +195,8 @@ async function runQueries(incidentMap) {
           correctIncidentCited,
           refusalCorrect,
           retrievalPath: res.debug?.retrieval?.path ?? null,
+          qaModel: res.model ?? null,
+          embedding: res.debug?.retrieval?.embedding ?? null,
           answer: answer.slice(0, 300),
         };
 
@@ -228,6 +230,20 @@ function printSummary(results, incidentMap) {
   console.log("\n╔═══════════════════════════════════════════════════════════════════════════╗");
   console.log("║                    RAG EVALUATION — REAL POSTMORTEMS                     ║");
   console.log("╚═══════════════════════════════════════════════════════════════════════════╝\n");
+
+  // Stamp which stack produced these numbers — a score is meaningless without
+  // saying whether it came from the deterministic-hash/extractive default or a
+  // real embedding + LLM generation path.
+  const stampSource = qaResults.find((r) => r.qaModel || r.embedding);
+  const stack = {
+    embedding: stampSource?.embedding
+      ? `${stampSource.embedding.provider}/${stampSource.embedding.model} (${stampSource.embedding.dimensions}d)`
+      : "unknown",
+    qa: stampSource?.qaModel
+      ? `${stampSource.qaModel.provider}/${stampSource.qaModel.name}`
+      : "unknown",
+  };
+  console.log(`Stack: embedding=${stack.embedding}  qa=${stack.qa}\n`);
 
   // QA results grouped by incident
   const incidentGroups = {};
@@ -317,6 +333,7 @@ function printSummary(results, incidentMap) {
   }
 
   return {
+    stack,
     qaAnsweredRate: totalAnswered / Math.max(1, totalQA),
     keyFactHitRate: totalFacts > 0 ? totalFactHits / totalFacts : 0,
     citationPrecision: totalCiteCorrect / Math.max(1, totalQA),

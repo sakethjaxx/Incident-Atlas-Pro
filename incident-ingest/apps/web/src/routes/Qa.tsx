@@ -8,6 +8,26 @@ function formatPercent(value: number) {
   return Math.max(0, Math.min(99, Math.round(value * 100)));
 }
 
+type ConfidenceTier = "high" | "medium" | "low";
+
+const CONFIDENCE_TIERS: Record<ConfidenceTier, { label: string; color: string }> = {
+  high: { label: "High", color: "var(--success)" },
+  medium: { label: "Medium", color: "var(--warning)" },
+  low: { label: "Low", color: "var(--danger)" },
+};
+
+// Prefer the server tier; derive from the raw score for older API responses.
+function resolveTier(data: {
+  confidenceTier?: ConfidenceTier;
+  confidence?: number;
+}): ConfidenceTier | undefined {
+  if (data.confidenceTier) return data.confidenceTier;
+  if (data.confidence === undefined) return undefined;
+  if (data.confidence >= 0.7) return "high";
+  if (data.confidence >= 0.45) return "medium";
+  return "low";
+}
+
 function formatDate(date: string | null) {
   if (!date) return null;
   const value = new Date(date);
@@ -85,7 +105,7 @@ export default function Qa() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const { data, isPending, error, mutate } = useMutation({
+  const { data, isPending, error, mutate, reset } = useMutation({
     mutationFn: postQa,
   });
 
@@ -120,6 +140,7 @@ export default function Qa() {
     setTags("");
     setFrom("");
     setTo("");
+    reset();
   }
 
   return (
@@ -146,9 +167,10 @@ export default function Qa() {
           />
         </div>
 
-        <div className="scope-segmented" aria-label="Answer source">
+        <div className="scope-segmented" role="group" aria-label="Answer source">
           <button
             type="button"
+            aria-pressed={scopeSource === "uploaded_documents"}
             className={scopeSource === "uploaded_documents" ? "active" : ""}
             onClick={() => setScopeSource("uploaded_documents")}
           >
@@ -157,6 +179,7 @@ export default function Qa() {
           </button>
           <button
             type="button"
+            aria-pressed={scopeSource === "public_web"}
             className={scopeSource === "public_web" ? "active" : ""}
             onClick={() => setScopeSource("public_web")}
           >
@@ -255,7 +278,7 @@ export default function Qa() {
       )}
 
       {error instanceof Error && (
-        <div className="alert alert-error">
+        <div className="alert alert-error" role="alert">
           <Icon name="alert" size={18} />
           <div>
             <strong>Generation failed.</strong> {error.message}
@@ -266,7 +289,7 @@ export default function Qa() {
       {data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {data.status === "refused" && data.refusal ? (
-            <div className="alert alert-warning">
+            <div className="alert alert-warning" role="alert">
               <Icon name="alert" size={18} />
               <div>
                 <strong>Refused: {data.refusal.reasonCode}</strong>
@@ -275,13 +298,18 @@ export default function Qa() {
             </div>
           ) : (
             <>
-              {data.confidence !== undefined && data.confidence < 0.5 && (
+              {resolveTier(data) === "low" && (
                 <div className="alert alert-warning" style={{ marginBottom: 8 }}>
                   <Icon name="alert" size={16} />
-                  <span>Low confidence ({formatPercent(data.confidence)}%) - answer may be incomplete. Verify with original sources.</span>
+                  <span>Low confidence — answer may be incomplete. Verify against the cited sources below.</span>
                 </div>
               )}
-              <div className="card" style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6 }}>
+              <div
+                className="card"
+                role="status"
+                aria-live="polite"
+                style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6, whiteSpace: "pre-wrap" }}
+              >
                 {data.answer}
                 <div style={{ marginTop: 16, fontSize: "0.8rem", color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
                   <span>Model: {data.model.name}</span>
@@ -289,14 +317,14 @@ export default function Qa() {
                   {data.scope && (
                     <span>{data.scope.source === "public_web" ? "Public web" : "Uploaded documents"}</span>
                   )}
-                  {data.confidence !== undefined && (
+                  {resolveTier(data) && (
                     <span
                       style={{
-                        color: data.confidence >= 0.5 ? "var(--success)" : "var(--warning)",
+                        color: CONFIDENCE_TIERS[resolveTier(data)!].color,
                         fontWeight: 600,
                       }}
                     >
-                      Confidence: {formatPercent(data.confidence)}%
+                      Confidence: {CONFIDENCE_TIERS[resolveTier(data)!].label}
                     </span>
                   )}
                   <span>Audit: {data.auditId.slice(0, 8)}...</span>

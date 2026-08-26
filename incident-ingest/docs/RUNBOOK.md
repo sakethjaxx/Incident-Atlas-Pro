@@ -18,10 +18,10 @@
 
 ## Local Setup
 
-### 1. Start infrastructure (Postgres + Redis)
+### 1. Start shared infrastructure (Postgres + Redis + MinIO)
 ```bash
 # From incident-ingest/
-docker compose up -d --wait
+docker compose up -d --wait db redis minio
 # Expected: db → healthy, redis → healthy
 ```
 
@@ -45,10 +45,14 @@ pnpm run api:generate
 
 ## Running the Application
 
-### Full stack (API + Worker)
+### Full local dev stack (API + Worker + Web)
 ```bash
 pnpm run dev          # starts all workspaces with node --watch
 ```
+
+Do not combine the command above with `docker compose up -d` for the whole
+compose file. `docker-compose.yaml` already defines `api` and `worker`, so
+starting both modes at once causes the local API to collide on port `3001`.
 
 ### Individual components
 ```bash

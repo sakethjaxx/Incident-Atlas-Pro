@@ -193,13 +193,15 @@ export async function answerQuestion(client, body) {
   }
 
   const sourceIncidents = buildSourceIncidents(selectedEvidence);
+  const confidenceValue = calculateConfidence(selectedEvidence);
   const response = {
     status: "answered",
     answer,
     citations,
     refusal: null,
     evidenceCount: retrieval.evidence.length,
-    confidence: calculateConfidence(selectedEvidence),
+    confidence: confidenceValue,
+    confidenceTier: confidenceTier(confidenceValue),
     sourceIncidents,
     scope: {
       ...request.scope,
@@ -591,6 +593,7 @@ function buildRefusal({
     },
     evidenceCount: evidenceCount ?? retrievedEvidence.length,
     confidence: 0,
+    confidenceTier: "low",
     sourceIncidents,
     scope,
     promptVersion: QA_PROMPT_VERSION,
@@ -709,11 +712,34 @@ function matchesPostFilters(incident, filters) {
   return true;
 }
 
-function calculateConfidence(evidence) {
+export function calculateConfidence(evidence) {
   if (evidence.length === 0) return 0;
-  const topScore = Math.max(...evidence.map((item) => item.retrievalScore));
-  const evidenceBoost = Math.min(0.15, evidence.length * 0.05);
-  return round(Math.min(0.95, topScore / (topScore + 1) + evidenceBoost));
+  const scores = evidence.map((item) => Number(item.retrievalScore) || 0);
+  const topScore = Math.max(...scores);
+  // Corroboration: each additional qualifying chunk (score above the strong-
+  // section floor) raises confidence — an answer backed by several sources is
+  // more trustworthy than one riding a single top hit.
+  const corroborating = scores.filter((score) => score >= MIN_STRONG_SECTION_SCORE).length;
+  const corroborationBoost = Math.min(0.2, Math.max(0, corroborating - 1) * 0.07);
+  // retrievalScore already lives in [0,1] (cosine / rerank / keyword floor).
+  // Use it directly. The old topScore/(topScore+1) squash mapped [0,1]→[0,0.5],
+  // which is why every answer read as <55% and the confidence badge undercut
+  // its own trust story.
+  return round(Math.min(0.98, topScore * 0.8 + corroborationBoost + 0.05));
+}
+
+/**
+ * Coarse confidence tier for the UI. A three-way High/Medium/Low badge is
+ * honest about a heuristic score; a precise percentage implies calibration the
+ * retrieval score does not have.
+ *
+ * @param {number} confidence
+ * @returns {"high" | "medium" | "low"}
+ */
+export function confidenceTier(confidence) {
+  if (confidence >= 0.7) return "high";
+  if (confidence >= 0.45) return "medium";
+  return "low";
 }
 
 function countOverlap(leftSet, rightTokens) {

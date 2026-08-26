@@ -182,9 +182,10 @@ export default function Search() {
           />
         </div>
 
-        <div className="scope-segmented" aria-label="Search source">
+        <div className="scope-segmented" role="group" aria-label="Search source">
           <button
             type="button"
+            aria-pressed={scopeSource === "uploaded_documents"}
             className={scopeSource === "uploaded_documents" ? "active" : ""}
             onClick={() => setScopeSource("uploaded_documents")}
           >
@@ -193,6 +194,7 @@ export default function Search() {
           </button>
           <button
             type="button"
+            aria-pressed={scopeSource === "public_web"}
             className={scopeSource === "public_web" ? "active" : ""}
             onClick={() => setScopeSource("public_web")}
           >
@@ -279,14 +281,14 @@ export default function Search() {
             <label htmlFor="search-submit">Run</label>
             <button id="search-submit" className="btn btn-primary" type="submit" disabled={!query.trim()}>
               <Icon name="search" size={16} />
-              {isFetching ? "Searching..." : "Search"}
+              {isFetching && !isFetchingNextPage ? "Searching..." : "Search"}
             </button>
           </div>
         </div>
       </form>
 
       {hasSubmittedQuery && !isLoading && !error && (
-        <div className="search-summary-line">
+        <div className="search-summary-line" role="status" aria-live="polite">
           {totalResults} result{totalResults === 1 ? "" : "s"} for "{submitted.q}"
           {" - "}
           {responseScope?.source === "public_web" ? "Public web" : "Uploaded documents"}
@@ -323,7 +325,7 @@ export default function Search() {
       )}
 
       {error instanceof Error && (
-        <div className="alert alert-error">
+        <div className="alert alert-error" role="alert">
           <Icon name="alert" size={18} />
           <div>
             <strong>Search failed.</strong> {error.message}

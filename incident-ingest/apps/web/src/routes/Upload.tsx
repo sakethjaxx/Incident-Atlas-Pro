@@ -41,6 +41,7 @@ export default function Upload() {
   const [companies, setCompanies] = useState<string[]>([]);
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -65,24 +66,33 @@ export default function Upload() {
     const nextFiles = Array.from(fileList ?? []);
     if (nextFiles.length === 0) return;
 
-    if (nextFiles.length > MAX_FILES_PER_BATCH) {
-      setError(`Select up to ${MAX_FILES_PER_BATCH} files per batch.`);
-      return;
-    }
+    setFiles((prevFiles) => {
+      // Deduplicate by name + size
+      const existingKeys = new Set(prevFiles.map((f) => `${f.name}-${f.size}`));
+      const newFiles = nextFiles.filter((f) => !existingKeys.has(`${f.name}-${f.size}`));
+      const combined = [...prevFiles, ...newFiles];
 
-    const tooLarge = nextFiles.find((file) => file.size > MAX_FILE_SIZE_BYTES);
-    if (tooLarge) {
-      setError(`${tooLarge.name} exceeds the 10MB per-file limit.`);
-      return;
-    }
+      if (combined.length > MAX_FILES_PER_BATCH) {
+        setError(`Select up to ${MAX_FILES_PER_BATCH} files per batch. You selected ${combined.length}.`);
+        return prevFiles;
+      }
 
-    setFiles(nextFiles);
-    setError(null);
-    setUploadJobs([]);
+      const tooLarge = combined.find((file) => file.size > MAX_FILE_SIZE_BYTES);
+      if (tooLarge) {
+        setError(`${tooLarge.name} exceeds the 10MB per-file limit.`);
+        return prevFiles;
+      }
+
+      setError(null);
+      setUploadJobs([]);
+      return combined;
+    });
   };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     selectFiles(event.target.files);
+    // Reset so the same file can be selected again if removed
+    event.target.value = "";
   };
 
   const clearFiles = () => {
@@ -211,7 +221,7 @@ export default function Upload() {
       </div>
 
       {uploadJobs.length > 0 && completedCount > 0 && (
-        <div className="alert alert-success" id="upload-success" style={{ marginBottom: 18 }}>
+        <div className="alert alert-success" id="upload-success" role="status" style={{ marginBottom: 18 }}>
           <Icon name="checkCircle" size={18} />
           <div>
             <strong>{completedCount} incident{completedCount === 1 ? "" : "s"} processed.</strong>{" "}
@@ -260,25 +270,45 @@ export default function Upload() {
 
             <div className="form-group">
               <label
-                className="upload-dropzone"
+                className={`upload-dropzone ${isDragging ? "is-dragging" : ""}`}
+                role="button"
+                tabIndex={hasActiveJobs ? -1 : 0}
+                aria-disabled={hasActiveJobs}
+                aria-label="Select incident report files"
+                onKeyDown={(event) => {
+                  if ((event.key === "Enter" || event.key === " ") && !hasActiveJobs) {
+                    event.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  if (!hasActiveJobs) setIsDragging(true);
+                }}
                 onDragOver={(event) => {
                   event.preventDefault();
-                  if (!hasActiveJobs) event.currentTarget.style.borderColor = "var(--brand)";
+                  if (!hasActiveJobs) setIsDragging(true);
                 }}
                 onDragLeave={(event) => {
                   event.preventDefault();
-                  if (!hasActiveJobs) event.currentTarget.style.borderColor = "var(--border)";
+                  if (!hasActiveJobs) setIsDragging(false);
                 }}
                 onDrop={(event) => {
                   event.preventDefault();
                   if (!hasActiveJobs) {
-                    event.currentTarget.style.borderColor = "var(--border)";
+                    setIsDragging(false);
                     selectFiles(event.dataTransfer.files);
                   }
                 }}
-                style={{ cursor: hasActiveJobs ? "not-allowed" : "pointer", opacity: hasActiveJobs ? 0.72 : 1 }}
+                style={{
+                  cursor: hasActiveJobs ? "not-allowed" : "pointer",
+                  opacity: hasActiveJobs ? 0.72 : 1,
+                  borderColor: isDragging ? "var(--brand)" : "var(--border)",
+                  backgroundColor: isDragging ? "var(--bg-overlay)" : "transparent",
+                  transition: "border-color 0.2s, background-color 0.2s",
+                }}
               >
-                <div className="upload-dropzone-icon">
+                <div className="upload-dropzone-icon" style={{ color: isDragging ? "var(--brand)" : "inherit" }}>
                   <Icon name="upload" size={24} />
                 </div>
                 <div className="upload-dropzone-title">
@@ -312,7 +342,7 @@ export default function Upload() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
                   {files.map((f, i) => (
                     <div
-                      key={i}
+                      key={`${f.name}-${f.size}-${f.lastModified}`}
                       style={{
                         display: "flex",
                         justifyContent: "space-between",
@@ -338,9 +368,10 @@ export default function Upload() {
                         className="btn btn-secondary"
                         style={{ padding: 4 }}
                         onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
-                        title="Remove file"
+                        title={`Remove ${f.name}`}
+                        aria-label={`Remove ${f.name}`}
                       >
-                        <Icon name="x" size={14} />
+                        <Icon name="close" size={14} />
                       </button>
                     </div>
                   ))}
@@ -365,7 +396,15 @@ export default function Upload() {
                     {failedCount > 0 ? `${failedCount} failed` : hasActiveJobs ? "Processing" : "Done"}
                   </span>
                 </div>
-                <div className="progress-bar" style={{ marginBottom: 12 }}>
+                <div
+                  className="progress-bar"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={uploadJobs.length}
+                  aria-valuenow={completedCount}
+                  aria-label={`${completedCount} of ${uploadJobs.length} files processed`}
+                  style={{ marginBottom: 12 }}
+                >
                   <div
                     className="progress-fill"
                     style={{

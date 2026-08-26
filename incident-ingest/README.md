@@ -60,10 +60,10 @@ During incidents, teams lose time searching scattered knowledge across postmorte
 
 ## Run locally
 
-1. Start infrastructure
+1. Start shared infrastructure only
 
 ```bash
-docker compose up -d
+docker compose up -d db redis minio
 ```
 
 2. Install dependencies
@@ -77,6 +77,7 @@ pnpm install
 ```bash
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env
+cp apps/worker/.env.example apps/worker/.env
 ```
 
 4. Run migrations
@@ -85,11 +86,15 @@ cp apps/web/.env.example apps/web/.env
 pnpm api:migrate
 ```
 
-5. Start the API and web app
+5. Start the app locally
 
 ```bash
 pnpm dev
 ```
+
+Note: `docker-compose.yaml` also defines `api` and `worker`. If you already ran
+`docker compose up -d` without service names, stop those containers before
+starting `pnpm dev` or the local API will conflict on port `3001`.
 
 Local services:
 

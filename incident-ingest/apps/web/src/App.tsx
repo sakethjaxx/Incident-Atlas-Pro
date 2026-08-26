@@ -10,7 +10,7 @@ import Graph from "./routes/Graph";
 import Qa from "./routes/Qa";
 import Eval from "./routes/Eval";
 import NotFound from "./routes/NotFound";
-import { getHealth } from "./lib/api";
+import { API_URL, getHealth } from "./lib/api";
 import Icon, { type IconName } from "./components/Icon";
 
 const NAV_ITEMS = [
@@ -147,7 +147,7 @@ export default function App() {
             <span
               className="badge api-status-badge"
               style={{ borderColor: apiStatus.dot, color: apiStatus.color }}
-              title={`API at ${import.meta.env.VITE_API_URL || "http://localhost:3001"}`}
+              title={`API at ${API_URL}`}
             >
               <span
                 className={health?.ok ? "dot-pulse" : undefined}

@@ -42,6 +42,31 @@ export interface PaginatedResponse<T> {
   limit: number;
 }
 
+// ── Access scope (shared by Upload + Search + Q&A) ───────────────────────────
+
+/** Which corpus a search / Q&A request runs against. */
+export type ScopeSource = "uploaded_documents" | "public_web";
+
+/** Scope selector the client sends on search / Q&A requests. */
+export interface SearchScope {
+  source: ScopeSource;
+  companies?: string[];
+}
+
+/** Scope the server echoes back on a response. */
+export interface AccessScope {
+  source: ScopeSource;
+  companies?: string[];
+  mode?: string;
+}
+
+/** Per-result provenance: why the caller is allowed to see this result. */
+export interface SourceAccess {
+  source: ScopeSource;
+  label: string;
+  accessReason: string;
+}
+
 // ── Sprint 2: Search contract (mirrors API_SPEC.md) ──────────────────────────
 
 /** A single evidence snippet attached to a search result. */
@@ -60,10 +85,12 @@ export interface SearchResult {
   keywordScore?: number;
   vectorScore?: number;
   evidence: Evidence[];
+  sourceAccess?: SourceAccess;
 }
 
 export interface SearchParams {
   q: string;
+  scope?: SearchScope;
   filterCompany?: string;
   filterSeverity?: string;
   filterTag?: string;
@@ -87,6 +114,8 @@ export interface SearchResponse {
     from: string | null;
     to: string | null;
   };
+  scope?: AccessScope;
+  publicWeb?: { status: string; message: string } | null;
 }
 
 // ── Sprint 2: Similar incidents contract ─────────────────────────────────────
@@ -155,10 +184,13 @@ export interface GraphPatternsParams {
 
 export interface QaPayload {
   question: string;
+  scope?: SearchScope;
   filters?: {
     company?: string;
     tags?: string[];
     incidentIds?: string[];
+    from?: string;
+    to?: string;
   };
   options?: {
     maxEvidenceSections?: number;
@@ -178,6 +210,7 @@ export interface QaCitation {
   excerpt: string;
   anchor: string;
   retrievalScore: number;
+  sourceAccess?: SourceAccess;
 }
 
 export interface QaResponse {
@@ -190,6 +223,9 @@ export interface QaResponse {
   };
   evidenceCount: number;
   promptVersion: string;
+  confidence?: number;
+  confidenceTier?: "high" | "medium" | "low";
+  scope?: AccessScope;
   model: {
     provider: string;
     name: string;
@@ -214,6 +250,7 @@ export interface EvalLatestResponse {
   thresholds: Record<string, number>;
   failures: any[];
   artifactPath: string;
+  smallSampleWarning?: boolean;
 }
 
 // ── Job tracking ─────────────────────────────────────────────────────────────
@@ -258,15 +295,44 @@ export interface BatchUploadResponse {
 
 // ─── HTTP layer ───────────────────────────────────────────────────────────────
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+function isLoopbackApiUrl(value: string) {
+  try {
+    const base =
+      typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const url = new URL(value, base);
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiUrl() {
+  const configured = import.meta.env.VITE_API_URL?.trim();
+
+  // In Vite dev, prefer the built-in proxy for loopback targets so the app
+  // works the same from localhost, 127.0.0.1, and embedded browser surfaces.
+  if (import.meta.env.DEV && (!configured || isLoopbackApiUrl(configured))) {
+    return "/api";
+  }
+
+  return configured || "http://localhost:3001";
+}
+
+export const API_URL = resolveApiUrl();
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers ?? {});
+  const hasBody = options?.body !== undefined && options?.body !== null;
+  const isFormData =
+    typeof FormData !== "undefined" && options?.body instanceof FormData;
+
+  if (hasBody && !isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -292,9 +358,17 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN as string | undefined;
 
-export async function uploadFile(file: File): Promise<UploadResponse> {
+export interface UploadOptions {
+  company?: string;
+}
+
+export async function uploadFile(
+  file: File,
+  opts: UploadOptions = {}
+): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  if (opts.company?.trim()) formData.append("company", opts.company.trim());
 
   const headers: HeadersInit = {};
   if (ADMIN_TOKEN) {
@@ -323,9 +397,13 @@ export async function uploadFile(file: File): Promise<UploadResponse> {
   return res.json() as Promise<UploadResponse>;
 }
 
-export async function uploadFiles(files: File[]): Promise<BatchUploadResponse> {
+export async function uploadFiles(
+  files: File[],
+  opts: UploadOptions = {}
+): Promise<BatchUploadResponse> {
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
+  if (opts.company?.trim()) formData.append("company", opts.company.trim());
 
   const headers: HeadersInit = {};
   if (ADMIN_TOKEN) {
@@ -424,6 +502,9 @@ export function getMetadataNodes(type?: string): Promise<string[]> {
  */
 export function searchIncidents(params: SearchParams): Promise<SearchResponse> {
   const qs = new URLSearchParams({ q: params.q });
+  if (params.scope?.source) qs.set("source", params.scope.source);
+  if (params.scope?.companies?.length)
+    qs.set("companies", params.scope.companies.join(","));
   if (params.filterCompany) qs.set("company", params.filterCompany);
   if (params.filterSeverity) qs.set("severity", params.filterSeverity);
   if (params.filterTag) qs.set("tag", params.filterTag);

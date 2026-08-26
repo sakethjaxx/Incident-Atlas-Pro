@@ -11,6 +11,19 @@ describe("GET /health", () => {
     expect(res.body.ok).toBe(true);
     expect(typeof res.body.ts).toBe("string");
   });
+
+  it("allows both localhost and 127.0.0.1 local dev origins", async () => {
+    const localhostRes = await request(app)
+      .get("/health")
+      .set("Origin", "http://localhost:5173");
+
+    const loopbackRes = await request(app)
+      .get("/health")
+      .set("Origin", "http://127.0.0.1:5173");
+
+    expect(localhostRes.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
+    expect(loopbackRes.headers["access-control-allow-origin"]).toBe("http://127.0.0.1:5173");
+  });
 });
 
 describe("404 handler", () => {
