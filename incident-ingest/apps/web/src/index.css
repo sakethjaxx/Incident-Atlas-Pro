@@ -82,12 +82,19 @@ body {
   font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.6;
-  background: var(--bg-base);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(37, 99, 235, 0.26), transparent 45%),
+    radial-gradient(circle at 90% 4%, rgba(147, 51, 234, 0.20), transparent 50%),
+    radial-gradient(circle at 30% 92%, rgba(16, 185, 129, 0.16), transparent 55%),
+    radial-gradient(circle at 95% 85%, rgba(234, 88, 12, 0.12), transparent 45%),
+    var(--bg-base);
+  background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
 }
 
 svg {
@@ -119,8 +126,8 @@ h1, h2, h3, h4, h5 {
   color: var(--text-primary);
 }
 
-h1 { font-size: 1.875rem; }
-h2 { font-size: 1.25rem; }
+h1 { font-size: 1.875rem; line-height: 1.15; letter-spacing: -0.02em; }
+h2 { font-size: 1.25rem; letter-spacing: -0.01em; }
 h3 { font-size: 1rem; font-weight: 600; }
 h4 { font-size: 0.875rem; font-weight: 600; }
 
@@ -153,8 +160,11 @@ code, pre {
   left: 0;
   bottom: 0;
   width: 220px;
-  background: var(--bg-surface);
-  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
+  backdrop-filter: blur(32px) saturate(190%);
+  border-right: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 8px 0 32px rgba(15, 23, 42, 0.06);
   display: flex;
   flex-direction: column;
   z-index: 50;
@@ -228,13 +238,17 @@ code, pre {
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), transform 100ms ease-out;
   cursor: pointer;
 }
 
 .nav-item:hover {
   background: var(--bg-overlay);
   color: var(--text-primary);
+}
+
+.nav-item:active {
+  transform: scale(0.98);
 }
 
 .nav-item.active {
@@ -276,8 +290,10 @@ code, pre {
   align-items: center;
   min-width: 0;
   padding: 0 24px;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  backdrop-filter: blur(24px) saturate(190%);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
   gap: 12px;
 }
 
@@ -359,8 +375,11 @@ code, pre {
 /* ── Card ── */
 
 .card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-top-color: rgba(255, 255, 255, 0.85);
   border-radius: var(--r-xl);
   box-shadow: var(--shadow-sm);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
@@ -375,7 +394,7 @@ code, pre {
 }
 
 .card-raised {
-  background: var(--bg-surface);
+  background: rgba(255, 255, 255, 0.78);
   border-color: var(--border-hover);
 }
 
@@ -451,7 +470,10 @@ code, pre {
 .incident-row:hover {
   background: var(--bg-raised);
   border-color: var(--border-hover);
-  transform: none;
+}
+
+.incident-row:active {
+  transform: scale(0.99);
 }
 
 .incident-sev-dot {
@@ -557,6 +579,10 @@ code, pre {
 .filter-chip:hover {
   border-color: var(--border-hover);
   color: var(--text-primary);
+}
+
+.filter-chip:active {
+  transform: scale(0.96);
 }
 
 .filter-chip.active {
@@ -757,7 +783,10 @@ code, pre {
 .btn-primary:hover:not(:disabled) {
   background: #1d4ed8;
   box-shadow: none;
-  transform: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .btn-secondary {
@@ -1161,6 +1190,73 @@ code, pre {
 
 [title] { cursor: help; }
 
+/* ── Focus-visible (keyboard) ── */
+
+.nav-item:focus-visible,
+.filter-chip:focus-visible,
+.quick-link:focus-visible,
+.incident-row:focus-visible,
+.scope-segmented button:focus-visible,
+.btn:focus-visible,
+.similar-item:focus-visible,
+.timeline-accordion-summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ── Reduced motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .fade-in {
+    animation: none;
+  }
+
+  .dot-pulse {
+    animation: none;
+    opacity: 1;
+  }
+
+  .skeleton {
+    animation: none;
+  }
+
+  .btn:active:not(:disabled),
+  .nav-item:active,
+  .incident-row:active,
+  .filter-chip:active,
+  .scope-segmented button:active,
+  .quick-link:active {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .sidebar,
+  .card {
+    background: var(--bg-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .topbar {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar {
+    border-right: 1px solid var(--border);
+    box-shadow: none;
+  }
+
+  .card {
+    border-color: var(--border);
+  }
+}
+
 /* ── Detail header ── */
 
 .detail-hero {
@@ -1301,6 +1397,10 @@ code, pre {
   border-color: var(--border-brand);
   color: var(--text-primary);
   background: var(--brand-dim);
+}
+
+.quick-link:active {
+  transform: scale(0.98);
 }
 
 .quick-link-icon {
@@ -1449,12 +1549,16 @@ code, pre {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform 100ms ease-out;
 }
 
 .scope-segmented button:hover {
   color: var(--text-primary);
   background: var(--bg-overlay);
+}
+
+.scope-segmented button:active {
+  transform: scale(0.97);
 }
 
 .scope-segmented button.active {
