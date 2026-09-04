@@ -109,20 +109,26 @@ export function getRagConfig(env = process.env) {
 
 // ─── Ollama HTTP client (zero-dep, global fetch) ──────────────────────────────
 
+/** Raw POST to Ollama with the shared timeout/abort wiring. Returns the Response. */
+async function ollamaRawFetch(config, path, body, controller) {
+  const res = await fetch(`${config.ollama.url}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Ollama ${path} ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  return res;
+}
+
 async function ollamaFetch(config, path, body) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.ollama.timeoutMs);
   try {
-    const res = await fetch(`${config.ollama.url}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const detail = await res.text().catch(() => "");
-      throw new Error(`Ollama ${path} ${res.status}: ${detail.slice(0, 200)}`);
-    }
+    const res = await ollamaRawFetch(config, path, body, controller);
     return await res.json();
   } finally {
     clearTimeout(timer);
@@ -151,6 +157,63 @@ export async function ollamaGenerate(opts, config = getRagConfig()) {
   const text = typeof data?.response === "string" ? data.response : "";
   if (!text.trim()) throw new Error("Ollama returned an empty response");
   return text;
+}
+
+/**
+ * Generate text with an Ollama-served model, invoking `onToken` with each
+ * incremental chunk as it streams in (Ollama's NDJSON `/api/generate` stream).
+ * Returns the full concatenated text once generation is done, same contract
+ * as `ollamaGenerate`. Throws on any failure — callers decide the fallback.
+ *
+ * @param {{ model: string, prompt: string, system?: string, temperature?: number }} opts
+ * @param {ReturnType<typeof getRagConfig>} config
+ * @param {(token: string) => void} [onToken]
+ * @returns {Promise<string>}
+ */
+export async function ollamaGenerateStream(opts, config = getRagConfig(), onToken) {
+  const payload = {
+    model: opts.model,
+    prompt: opts.prompt,
+    stream: true,
+    options: { temperature: opts.temperature ?? 0 },
+  };
+  if (opts.system) payload.system = opts.system;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), config.ollama.timeoutMs);
+  try {
+    const res = await ollamaRawFetch(config, "/api/generate", payload, controller);
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("Ollama /api/generate returned no stream body");
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let full = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let newlineIndex;
+      while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, newlineIndex).trim();
+        buffer = buffer.slice(newlineIndex + 1);
+        if (!line) continue;
+        const chunk = JSON.parse(line);
+        if (typeof chunk.response === "string" && chunk.response) {
+          full += chunk.response;
+          onToken?.(chunk.response);
+        }
+        if (chunk.done) return full;
+      }
+    }
+
+    if (!full.trim()) throw new Error("Ollama returned an empty response");
+    return full;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

@@ -9,6 +9,7 @@ import Upload from "./routes/Upload";
 import Graph from "./routes/Graph";
 import Qa from "./routes/Qa";
 import Eval from "./routes/Eval";
+import Compare from "./routes/Compare";
 import NotFound from "./routes/NotFound";
 import { API_URL, getHealth } from "./lib/api";
 import Icon, { type IconName } from "./components/Icon";
@@ -19,6 +20,7 @@ const NAV_ITEMS = [
   { to: "/incidents", icon: "incidents" as IconName, label: "Incidents", exact: false },
   { to: "/graph", icon: "graph" as IconName, label: "Patterns", exact: false },
   { to: "/qa", icon: "qa" as IconName, label: "Ask", exact: false },
+  { to: "/compare", icon: "compare" as IconName, label: "Compare", exact: false },
   { to: "/upload", icon: "upload" as IconName, label: "Upload", exact: false },
   { to: "/eval", icon: "eval" as IconName, label: "Quality", exact: false },
 ];
@@ -173,6 +175,7 @@ export default function App() {
             <Route path="/incidents/:id" element={<IncidentDetail />} />
             <Route path="/graph" element={<Graph />} />
             <Route path="/qa" element={<Qa />} />
+            <Route path="/compare" element={<Compare />} />
             <Route path="/eval" element={<Eval />} />
             <Route path="/upload" element={<Upload />} />
             <Route path="*" element={<NotFound />} />

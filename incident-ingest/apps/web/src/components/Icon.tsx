@@ -23,7 +23,9 @@ export type IconName =
   | "clock"
   | "wrench"
   | "pulse"
-  | "refresh";
+  | "refresh"
+  | "thumbsUp"
+  | "thumbsDown";
 
 type IconProps = SVGProps<SVGSVGElement> & {
   name: IconName;
@@ -226,6 +228,20 @@ function IconPath({ name }: { name: IconName }) {
         <>
           <path d="M20 11a8 8 0 1 0 2 5.5" />
           <path d="M20 4v7h-7" />
+        </>
+      );
+    case "thumbsUp":
+      return (
+        <>
+          <path d="M7 11v9H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z" />
+          <path d="M7 11l4-7a2 2 0 0 1 2 2v4h5.5a1.5 1.5 0 0 1 1.46 1.84l-1.4 6A1.5 1.5 0 0 1 17.1 20H10a3 3 0 0 1-3-3" />
+        </>
+      );
+    case "thumbsDown":
+      return (
+        <>
+          <path d="M17 13V4h3a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1z" />
+          <path d="M17 13l-4 7a2 2 0 0 1-2-2v-4H5.5a1.5 1.5 0 0 1-1.46-1.84l1.4-6A1.5 1.5 0 0 1 6.9 4H14a3 3 0 0 1 3 3" />
         </>
       );
     default:

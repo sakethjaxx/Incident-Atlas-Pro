@@ -304,6 +304,8 @@ model AuditLog {
   refusalCode          String?  @map("refusal_code")
   artifactPath         String?  @map("artifact_path")
   metadataJson         Json?    @map("metadata_json")
+  feedbackHelpful      Boolean? @map("feedback_helpful")
+  feedbackAt           DateTime? @map("feedback_at")
 
   @@index([createdAt])
   @@index([action, createdAt])

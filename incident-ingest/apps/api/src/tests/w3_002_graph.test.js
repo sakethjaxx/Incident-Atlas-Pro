@@ -14,7 +14,7 @@
 
 import { describe, it, expect, afterAll, beforeAll } from "vitest";
 import { prisma } from "../lib/prisma.js";
-import { safeIndexIncidentGraph } from "../lib/graph.js";
+import { safeIndexIncidentGraph } from "@pkg/db";
 
 afterAll(async () => {
   await prisma.$disconnect();

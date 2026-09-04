@@ -273,3 +273,150 @@ describe("POST /qa citation integrity", () => {
     expect(res.body.sourceIncidents.map((incident) => incident.id)).toEqual([target.id]);
   });
 });
+
+// W6-032 — Q&A feedback loop
+// Uses a dedicated bearer token (like the rate-limit describe above) so this
+// block's request volume doesn't share — and exhaust — the AUTH/dev-secret
+// rate-limit bucket already spent by the describes above it in this file.
+describe("POST /qa/:auditId/feedback", () => {
+  const FEEDBACK_AUTH = { Authorization: "Bearer test-feedback-token" };
+  let originalQaToken;
+
+  beforeEach(() => {
+    originalQaToken = process.env.QA_TOKEN;
+    process.env.QA_TOKEN = "test-feedback-token";
+  });
+
+  afterAll(() => {
+    process.env.QA_TOKEN = originalQaToken;
+  });
+
+  it("records helpful=true against the audit log row for a real answer", async () => {
+    await seedQaIncident();
+    const qaRes = await request(app)
+      .post("/qa")
+      .set(FEEDBACK_AUTH)
+      .send({ question: "What fixed the payment-api outage?" });
+    expect(qaRes.body.auditId).toBeTruthy();
+
+    const res = await request(app)
+      .post(`/qa/${qaRes.body.auditId}/feedback`)
+      .set(FEEDBACK_AUTH)
+      .send({ helpful: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ auditId: qaRes.body.auditId, helpful: true });
+
+    const audit = await prisma.auditLog.findUnique({ where: { id: qaRes.body.auditId } });
+    expect(audit.feedbackHelpful).toBe(true);
+    expect(audit.feedbackAt).toBeTruthy();
+  });
+
+  it("records helpful=false for a refusal", async () => {
+    const qaRes = await request(app)
+      .post("/qa")
+      .set(FEEDBACK_AUTH)
+      .send({ question: "Who won the 1972 World Series?" });
+    expect(qaRes.body.status).toBe("refused");
+
+    const res = await request(app)
+      .post(`/qa/${qaRes.body.auditId}/feedback`)
+      .set(FEEDBACK_AUTH)
+      .send({ helpful: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ auditId: qaRes.body.auditId, helpful: false });
+  });
+
+  it("returns 400 for a malformed audit ID", async () => {
+    const res = await request(app)
+      .post("/qa/not-a-uuid/feedback")
+      .set(FEEDBACK_AUTH)
+      .send({ helpful: true });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/audit id/i);
+  });
+
+  it("returns 400 when helpful is not a boolean", async () => {
+    await seedQaIncident();
+    const qaRes = await request(app)
+      .post("/qa")
+      .set(FEEDBACK_AUTH)
+      .send({ question: "What fixed the payment-api outage?" });
+
+    const res = await request(app)
+      .post(`/qa/${qaRes.body.auditId}/feedback`)
+      .set(FEEDBACK_AUTH)
+      .send({ helpful: "yes" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/helpful/);
+  });
+
+  it("returns 404 for an audit ID that does not exist", async () => {
+    const res = await request(app)
+      .post("/qa/00000000-0000-0000-0000-000000000000/feedback")
+      .set(FEEDBACK_AUTH)
+      .send({ helpful: true });
+    expect(res.status).toBe(404);
+  });
+});
+
+// W6-033 — streaming Q&A. QA_PROVIDER defaults to "local" in tests (no Ollama
+// call), so this exercises the SSE framing and the no-token/single-"done"
+// degrade path rather than live token-by-token generation. Dedicated token
+// for the same rate-limit-bucket-isolation reason as the describe above.
+describe("POST /qa/stream", () => {
+  const STREAM_AUTH = { Authorization: "Bearer test-stream-token" };
+  let originalQaToken;
+
+  beforeEach(() => {
+    originalQaToken = process.env.QA_TOKEN;
+    process.env.QA_TOKEN = "test-stream-token";
+  });
+
+  afterAll(() => {
+    process.env.QA_TOKEN = originalQaToken;
+  });
+
+  function parseSseEvents(text) {
+    return text
+      .split("\n\n")
+      .filter((frame) => frame.trim())
+      .map((frame) => {
+        const lines = frame.split("\n");
+        const event = lines.find((line) => line.startsWith("event:")).slice(6).trim();
+        const data = JSON.parse(lines.find((line) => line.startsWith("data:")).slice(5).trim());
+        return { event, data };
+      });
+  }
+
+  it("streams a single done event carrying the same contract as POST /qa", async () => {
+    await seedQaIncident();
+
+    const res = await request(app)
+      .post("/qa/stream")
+      .set(STREAM_AUTH)
+      .send({ question: "What fixed the payment-api outage?" });
+
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/event-stream/);
+
+    const events = parseSseEvents(res.text);
+    expect(events.some((event) => event.event === "error")).toBe(false);
+    const done = events.find((event) => event.event === "done");
+    expect(done).toBeTruthy();
+    expect(done.data.status).toBe("answered");
+    expect(done.data.answer).toContain("[C1]");
+    expect(done.data.auditId).toBeTruthy();
+
+    const audit = await prisma.auditLog.findUnique({ where: { id: done.data.auditId } });
+    expect(audit.action).toBe("qa.answer");
+  });
+
+  it("returns a normal 400 JSON response for malformed input, not an SSE stream", async () => {
+    const res = await request(app).post("/qa/stream").set(STREAM_AUTH).send({ question: "   " });
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toMatch(/json/);
+    expect(res.body.error).toMatch(/question/);
+  });
+});

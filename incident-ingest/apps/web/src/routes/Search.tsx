@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { searchIncidents, type ScopeSource, type SearchResult, getMetadataCompanies, getMetadataTags, getMetadataSeverities } from "../lib/api";
+import { searchIncidents, type ScopeSource, type SearchResult, getMetadataCompanies, getMetadataTags, getMetadataSeverities, getAcronymHints } from "../lib/api";
 import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
@@ -175,12 +175,27 @@ export default function Search() {
           <input
             id="search-query"
             type="search"
-            placeholder="database timeout, cache stampede, deploy rollback"
+            placeholder="database timeout, cache stampede, k8s oom, s3 access denied"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             aria-label="Search incidents"
           />
         </div>
+
+        {/* Acronym expansion hints */}
+        {query.trim() && (() => {
+          const hints = getAcronymHints(query);
+          return hints.length > 0 ? (
+            <div className="acronym-hints" aria-label="Query expansions" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "4px 0" }}>
+              <span style={{ fontSize: "0.72rem", color: "var(--text-secondary)", alignSelf: "center" }}>Expanding:</span>
+              {hints.map((h) => (
+                <span key={h.acronym} className="badge badge-info" style={{ fontSize: "0.72rem" }}>
+                  {h.acronym} → {h.suggestion}
+                </span>
+              ))}
+            </div>
+          ) : null;
+        })()}
 
         <div className="scope-segmented" role="group" aria-label="Search source">
           <button

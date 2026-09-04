@@ -14,7 +14,7 @@
  */
 
 import { logger } from "./logger.js";
-import { getRagConfig, ollamaGenerate } from "@pkg/nlp";
+import { getRagConfig, ollamaGenerate, ollamaGenerateStream } from "@pkg/nlp";
 
 export const QA_PROMPT_VERSION_LOCAL = "qa-v1";
 export const QA_PROMPT_VERSION_OLLAMA = "qa-v2-ollama";
@@ -95,6 +95,42 @@ export async function tryOllamaAnswer(input, config = getRagConfig()) {
     return { answer, insufficient: false };
   } catch (error) {
     logger.warn("[qa] ollama generation failed, using extractive fallback:", error?.message);
+    return null;
+  }
+}
+
+/**
+ * Streaming variant of tryOllamaAnswer — forwards each generated chunk to
+ * `onToken` as it arrives, then applies the same sanitize/insufficient-evidence
+ * handling to the full text once generation completes. Never throws.
+ *
+ * @param {{ question: string, citations: Array<object> }} input
+ * @param {ReturnType<typeof getRagConfig>} config
+ * @param {(token: string) => void} onToken
+ * @returns {Promise<{ answer: string, insufficient: boolean } | null>}
+ */
+export async function tryOllamaAnswerStream(input, config = getRagConfig(), onToken) {
+  if (config.qa.provider !== "ollama") return null;
+
+  try {
+    const raw = await ollamaGenerateStream(
+      {
+        model: config.qa.model,
+        system: QA_SYSTEM,
+        prompt: buildQaPrompt(input.question, input.citations),
+        temperature: 0,
+      },
+      config,
+      onToken
+    );
+    const answer = sanitizeGeneratedAnswer(raw);
+    if (!answer) return null;
+    if (/INSUFFICIENT_EVIDENCE/i.test(answer)) {
+      return { answer: null, insufficient: true };
+    }
+    return { answer, insufficient: false };
+  } catch (error) {
+    logger.warn("[qa] ollama streaming generation failed, using extractive fallback:", error?.message);
     return null;
   }
 }
