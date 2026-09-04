@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { postQa, type QaCitation, type ScopeSource } from "../lib/api";
+import { streamQa, postQaFeedback, type QaCitation, type ScopeSource } from "../lib/api";
 import Icon from "../components/Icon";
 
 function formatPercent(value: number) {
@@ -104,9 +104,20 @@ export default function Qa() {
   const [tags, setTags] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [streamedText, setStreamedText] = useState("");
+  const [feedbackSent, setFeedbackSent] = useState<boolean | null>(null);
 
   const { data, isPending, error, mutate, reset } = useMutation({
-    mutationFn: postQa,
+    mutationFn: (payload: Parameters<typeof streamQa>[0]) => {
+      setStreamedText("");
+      setFeedbackSent(null);
+      return streamQa(payload, (token) => setStreamedText((prev) => prev + token));
+    },
+  });
+
+  const feedbackMutation = useMutation({
+    mutationFn: (helpful: boolean) => postQaFeedback(data!.auditId, helpful),
+    onSuccess: (_res, helpful) => setFeedbackSent(helpful),
   });
 
   function handleSubmit(event: FormEvent) {
@@ -140,6 +151,8 @@ export default function Qa() {
     setTags("");
     setFrom("");
     setTo("");
+    setStreamedText("");
+    setFeedbackSent(null);
     reset();
   }
 
@@ -271,10 +284,22 @@ export default function Qa() {
       )}
 
       {isPending && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <div className="skeleton" style={{ height: 80, borderRadius: 16 }} />
-          <div className="skeleton" style={{ height: 160, borderRadius: 16 }} />
-        </div>
+        streamedText ? (
+          <div
+            className="card"
+            role="status"
+            aria-live="polite"
+            style={{ padding: 24, fontSize: "1.05rem", lineHeight: 1.6, whiteSpace: "pre-wrap" }}
+          >
+            {streamedText}
+            <span aria-hidden="true">▍</span>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="skeleton" style={{ height: 80, borderRadius: 16 }} />
+            <div className="skeleton" style={{ height: 160, borderRadius: 16 }} />
+          </div>
+        )
       )}
 
       {error instanceof Error && (
@@ -328,6 +353,33 @@ export default function Qa() {
                     </span>
                   )}
                   <span>Audit: {data.auditId.slice(0, 8)}...</span>
+                  {data.status === "answered" && (
+                    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="btn btn-icon"
+                        aria-label="Mark answer helpful"
+                        aria-pressed={feedbackSent === true}
+                        onClick={() => feedbackMutation.mutate(true)}
+                        disabled={feedbackSent !== null || feedbackMutation.isPending}
+                        style={{ color: feedbackSent === true ? "var(--success)" : undefined }}
+                      >
+                        <Icon name="thumbsUp" size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-icon"
+                        aria-label="Mark answer not helpful"
+                        aria-pressed={feedbackSent === false}
+                        onClick={() => feedbackMutation.mutate(false)}
+                        disabled={feedbackSent !== null || feedbackMutation.isPending}
+                        style={{ color: feedbackSent === false ? "var(--danger)" : undefined }}
+                      >
+                        <Icon name="thumbsDown" size={14} />
+                      </button>
+                      {feedbackSent !== null && <span>Thanks for the feedback</span>}
+                    </span>
+                  )}
                 </div>
               </div>
             </>

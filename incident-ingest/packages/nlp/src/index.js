@@ -305,6 +305,7 @@ export {
   STORAGE_DIMENSIONS,
   getRagConfig,
   ollamaGenerate,
+  ollamaGenerateStream,
   ollamaEmbed,
   embedText,
   embedTexts,
@@ -323,6 +324,36 @@ export {
 export { RRF_K, rrfFuse, buildRetrievalTrace } from "./fusion.js";
 
 export { tokenOverlapScore, rerankCandidates } from "./rerank.js";
+
+// ─── Production RAG: Acronym expansion ────────────────────────────────────────
+
+export {
+  ACRONYM_MAP,
+  expandToken,
+  expandQueryAcronyms,
+  getAcronymHints,
+} from "./acronyms.js";
+
+// ─── Production RAG: Key-fact extraction ──────────────────────────────────────
+
+export {
+  detectFactType,
+  extractKeyFact,
+  isComparisonQuestion,
+  buildComparisonAnswer,
+  classifyQuestion,
+} from "./factExtract.js";
+
+// ─── Production RAG: Offline evaluation harness ───────────────────────────────
+
+export {
+  EVAL_FIXTURES,
+  measureFactHit,
+  measureAcronymCoverage,
+  measureRetrievalRecall,
+  measureComparisonDetection,
+  runEvalHarness,
+} from "./evalHarness.js";
 
 export {
   rotateVector,

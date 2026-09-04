@@ -130,7 +130,7 @@ describe("safeIndexIncidentEmbeddings (worker)", () => {
 
   it("writes incident + section embeddings when text is non-empty", async () => {
     const { safeIndexIncidentEmbeddings } = await import(
-      "../retrieval.js"
+      "@pkg/db"
     );
 
     const incident = {

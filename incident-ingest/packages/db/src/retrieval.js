@@ -12,6 +12,7 @@ import {
   prepareQuery,
   scanCodes,
   deserializeQuantized,
+  expandQueryAcronyms,
 } from "@pkg/nlp";
 
 const VECTOR_MATCH_THRESHOLD = 0.25;
@@ -173,10 +174,12 @@ export async function findSimilarIncidents(client, incidentId, limit = 5) {
 }
 
 async function searchWithPgvector(client, params) {
+  // Expand acronyms in the query before FTS — fixes k8s, oom, s3, ssl etc.
+  const { expanded: expandedQ } = expandQueryAcronyms(params.q);
   const queryEmbedding = formatEmbeddingForSql(createEmbedding(params.q));
   if (!queryEmbedding) return null;
 
-  const sqlParams = [params.q, queryEmbedding];
+  const sqlParams = [expandedQ, queryEmbedding];
   const filterSql = buildSqlFilters(params.filters, sqlParams);
   sqlParams.push(params.limit, params.skip);
   const limitIndex = sqlParams.length - 1;
@@ -731,7 +734,9 @@ function buildChunkPrismaFilters(filters) {
 }
 
 async function chunkKeywordCandidates(client, q, filters, limit) {
-  const params = [q];
+  // Expand acronyms before FTS so k8s/oom/s3/ssl queries match expanded corpus text.
+  const { expanded: expandedQ } = expandQueryAcronyms(q);
+  const params = [expandedQ];
   const filterSql = buildChunkSqlFilters(filters, params);
   params.push(limit);
   const rows = await client.$queryRawUnsafe(
@@ -780,6 +785,7 @@ async function chunkPgvectorCandidates(client, queryVectorSql, filters, limit) {
  * then (when possible) verified/re-scored against the full pgvector column.
  */
 async function chunkTurboquantCandidates(client, queryVector, filters, limit, config) {
+
   // Process-level TQ code cache. Loading ALL chunk codes from DB on every
   // query is O(corpus) bytes of I/O. Cache the deserialized entries for the
   // process lifetime; invalidateTqCache() resets it after any chunk write.

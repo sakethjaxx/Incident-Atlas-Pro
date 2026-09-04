@@ -15,6 +15,7 @@ import { evalRouter } from "./routes/eval.js";
 import { qaRouter } from "./routes/qa.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { metadataRouter } from "./routes/metadata.js";
+import { compareRouter } from "./routes/compare.js";
 
 // W4-H3: Restrict CORS to a known origin; override via CORS_ORIGIN in production.
 // (index.js had this fix; app.js — the file actually imported by server.js — did not.)
@@ -77,6 +78,7 @@ export function buildApp() {
   app.use(qaRouter);
   app.use(jobsRouter);
   app.use(metadataRouter);
+  app.use(compareRouter);
 
   // 404 handler
   app.use((_req, res) => {

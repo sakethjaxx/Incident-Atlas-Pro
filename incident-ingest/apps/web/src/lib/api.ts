@@ -320,7 +320,10 @@ function resolveApiUrl() {
 
 export const API_URL = resolveApiUrl();
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+/**
+ * Lightweight fetch wrapper that handles auth headers and JSON parsing.
+ */
+export async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options?.headers ?? {});
   const hasBody = options?.body !== undefined && options?.body !== null;
   const isFormData =
@@ -577,6 +580,90 @@ export function postQa(payload: QaPayload): Promise<QaResponse> {
 }
 
 /**
+ * POST /qa/stream
+ * Same contract as postQa, but streams generated tokens live over SSE (W6-033)
+ * via `onToken` while the model is still writing; resolves with the same
+ * citation-validated QaResponse once the "done" event lands. Falls back to a
+ * single "done" event with no intermediate tokens when the backend isn't
+ * running the streaming Ollama path (e.g. QA_PROVIDER=local).
+ */
+export async function streamQa(
+  payload: QaPayload,
+  onToken?: (token: string) => void
+): Promise<QaResponse> {
+  const headers: HeadersInit = { "Content-Type": "application/json" };
+  if (ADMIN_TOKEN) headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+
+  const res = await fetch(`${API_URL}/qa/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok || !res.body) {
+    const text = await res.text().catch(() => "");
+    let message = `Request failed: ${res.status}`;
+    try {
+      const data = JSON.parse(text);
+      if (data && typeof data.error === "string") message = data.error;
+    } catch {
+      if (text) message = text;
+    }
+    throw new Error(message);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let frameEnd;
+    while ((frameEnd = buffer.indexOf("\n\n")) >= 0) {
+      const frame = buffer.slice(0, frameEnd);
+      buffer = buffer.slice(frameEnd + 2);
+      const lines = frame.split("\n");
+      const eventLine = lines.find((line) => line.startsWith("event:"));
+      const dataLine = lines.find((line) => line.startsWith("data:"));
+      if (!eventLine || !dataLine) continue;
+
+      const event = eventLine.slice(6).trim();
+      const data = JSON.parse(dataLine.slice(5).trim());
+
+      if (event === "token") onToken?.(data.token);
+      else if (event === "done") return data as QaResponse;
+      else if (event === "error") throw new Error(data.error ?? "Streaming failed");
+    }
+  }
+
+  throw new Error("Stream ended without a final response");
+}
+
+/**
+ * POST /qa/:auditId/feedback
+ * Record a thumbs up/down against a Q&A answer's audit log row (W6-032).
+ */
+export function postQaFeedback(
+  auditId: string,
+  helpful: boolean
+): Promise<{ auditId: string; helpful: boolean }> {
+  const headers: HeadersInit = {};
+  if (ADMIN_TOKEN) headers.Authorization = `Bearer ${ADMIN_TOKEN}`;
+
+  return request<{ auditId: string; helpful: boolean }>(
+    `/qa/${encodeURIComponent(auditId)}/feedback`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ helpful }),
+    }
+  );
+}
+
+/**
  * GET /eval/latest
  * Get the latest evaluation run report.
  */
@@ -588,4 +675,61 @@ export function getEvalLatest(): Promise<EvalLatestResponse> {
   return request<EvalLatestResponse>("/eval/latest", {
     headers,
   });
+}
+
+// ── Client-side acronym hint utility ──────────────────────────────────────────
+// Mirrors packages/nlp/src/acronyms.js but runs in-browser with no network call.
+
+const ACRONYM_HINT_MAP: Record<string, string> = {
+  k8s: "kubernetes",
+  kube: "kubernetes",
+  s3: "aws s3 object storage",
+  ec2: "aws ec2 instance",
+  rds: "aws rds database",
+  elb: "elastic load balancer",
+  alb: "application load balancer",
+  ecs: "elastic container service",
+  eks: "elastic kubernetes",
+  oom: "out of memory",
+  cpu: "cpu processor compute",
+  ssl: "ssl tls certificate",
+  tls: "tls ssl certificate",
+  dns: "dns domain name",
+  cdn: "cdn content delivery",
+  slo: "service level objective",
+  sla: "service level agreement",
+  sli: "service level indicator",
+  mttr: "mean time to recover",
+  rca: "root cause analysis",
+  sev1: "severity 1 critical",
+  sev2: "severity 2 major",
+  p99: "p99 tail latency percentile",
+  cicd: "ci/cd pipeline deployment",
+};
+
+/**
+ * Client-side acronym hint utility.
+ *
+ * Returns a list of { acronym, suggestion } pairs for tokens found in the query
+ * that match known SRE/DevOps acronyms. Used by the Search UI to show expansion
+ * hints below the search bar.
+ *
+ * @param query - Raw user query string
+ * @returns Array of hint objects
+ */
+export function getAcronymHints(
+  query: string
+): Array<{ acronym: string; suggestion: string }> {
+  const tokens = query.toLowerCase().match(/[a-z0-9][a-z0-9/_.-]*/g) ?? [];
+  const hints: Array<{ acronym: string; suggestion: string }> = [];
+
+  for (const token of tokens) {
+    const key = token.replace(/[^a-z0-9-]/g, "");
+    const suggestion = ACRONYM_HINT_MAP[key];
+    if (suggestion && suggestion !== key) {
+      hints.push({ acronym: key, suggestion });
+    }
+  }
+
+  return hints;
 }

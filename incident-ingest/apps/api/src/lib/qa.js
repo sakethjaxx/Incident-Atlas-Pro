@@ -1,4 +1,4 @@
-import { tokenizeForRetrieval, getRagConfig } from "@pkg/nlp";
+import { tokenizeForRetrieval, getRagConfig, extractKeyFact, isComparisonQuestion, buildComparisonAnswer } from "@pkg/nlp";
 import { searchIncidents, retrieveChunkEvidence } from "@pkg/db";
 import {
   DOCUMENT_SCOPE_SOURCE,
@@ -10,6 +10,7 @@ import {
 import {
   getQaModel,
   tryOllamaAnswer,
+  tryOllamaAnswerStream,
   QA_PROMPT_VERSION_LOCAL,
   QA_PROMPT_VERSION_OLLAMA,
   OLLAMA_CONTEXT_CHUNKS,
@@ -81,7 +82,7 @@ export class QaValidationError extends Error {
   }
 }
 
-export async function answerQuestion(client, body) {
+export async function answerQuestion(client, body, opts = {}) {
   const request = validateQaRequest(body);
   const config = getRagConfig();
 
@@ -150,7 +151,9 @@ export async function answerQuestion(client, body) {
   let generationDebug = null;
 
   if (config.qa.provider === "ollama") {
-    const generated = await tryOllamaAnswer({ question: request.question, citations }, config);
+    const generated = opts.onToken
+      ? await tryOllamaAnswerStream({ question: request.question, citations }, config, opts.onToken)
+      : await tryOllamaAnswer({ question: request.question, citations }, config);
     if (generated?.insufficient) {
       return buildRefusal({
         reasonCode: "insufficient_evidence",
@@ -179,7 +182,24 @@ export async function answerQuestion(client, body) {
   }
 
   if (!answer) {
-    answer = buildExtractiveAnswer(citations.slice(0, MAX_CITED_SECTIONS), request.question);
+    if (isComparisonQuestion(request.question)) {
+      const comp = buildComparisonAnswer(request.question, selectedEvidence, citations);
+      if (comp.hasComparison) answer = comp.answer;
+    }
+
+    if (!answer) {
+      const fact = extractKeyFact(request.question, selectedEvidence);
+      if (fact.found && fact.value) {
+        const cit = citations.find((c) => c.sectionId === fact.sectionId);
+        if (cit) {
+          answer = `${fact.sentence.trim()} [${cit.label}].`;
+        }
+      }
+    }
+
+    if (!answer) {
+      answer = buildExtractiveAnswer(citations.slice(0, MAX_CITED_SECTIONS), request.question);
+    }
   }
 
   const validation = validateAnswerCitations(answer, citations, selectedEvidence);
